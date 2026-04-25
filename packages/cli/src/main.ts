@@ -2,9 +2,26 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { runBench } from "@opsremedy/bench";
 import { type Alert, runInvestigation, TraceWriter } from "@opsremedy/core";
+import pc from "picocolors";
 import { bootstrapAuth, bootstrapRealClients } from "./bootstrap.ts";
 import { fetchAlertFromGcp, parseGcpAlertUrl } from "./gcp-alert.ts";
 import { runOnboard } from "./onboard/index.ts";
+
+/**
+ * Suppress noisy events. tool_end is omitted because tool_start already shows
+ * the call; the trailing toolCallId line adds no information for humans.
+ */
+const SUPPRESSED_EVENTS = new Set(["tool_end"]);
+
+/**
+ * Write an event line to stderr with explicit gray foreground. Sets an ANSI
+ * foreground so terminals that auto-tint stderr (stderred / iTerm2 profiles)
+ * don't override it to red.
+ */
+function logEvent(kind: string, detail?: unknown): void {
+  const line = `[${kind}]${detail ? ` ${JSON.stringify(detail)}` : ""}`;
+  process.stderr.write(`${pc.gray(line)}\n`);
+}
 
 /** Throw to exit cleanly from a command handler. Caught by the dispatcher. */
 class CliError extends Error {
@@ -89,8 +106,8 @@ async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<v
       displayThinking: !quiet,
       onEvent: (kind, detail) => {
         // Thinking events are rendered by ThinkingStream itself; only persist them.
-        if (!kind.startsWith("thinking_")) {
-          console.error(`[${kind}]${detail ? ` ${JSON.stringify(detail)}` : ""}`);
+        if (!kind.startsWith("thinking_") && !SUPPRESSED_EVENTS.has(kind)) {
+          logEvent(kind, detail);
         }
         trace?.write(kind, detail);
       },
