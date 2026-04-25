@@ -1,0 +1,22 @@
+scenario_id: 002-deploy-bad-image
+difficulty: 2
+expected_category: deployment
+required_keywords:
+  - DATABASE_URL
+  - v3.2.0
+  - CrashLoopBackOff
+forbidden_categories:
+  - resource_exhaustion
+  - healthy
+forbidden_keywords:
+  - postgres latency
+  - p99 latency root cause
+required_evidence_sources:
+  - k8s_events
+  - k8s_describe
+  - k8s_pod_logs
+optimal_trajectory:
+  - k8s_get_events
+  - k8s_describe
+  - k8s_pod_logs
+max_tool_calls: 12

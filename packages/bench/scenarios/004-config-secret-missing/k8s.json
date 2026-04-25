@@ -1,0 +1,44 @@
+{
+  "pods": {
+    "data": [
+      {
+        "namespace": "data",
+        "name": "etl-runner-65b9-qqqqq",
+        "phase": "Pending",
+        "ready": false,
+        "restarts": 0,
+        "node": "gke-prod-pool-d-1"
+      }
+    ]
+  },
+  "events": {
+    "data": [
+      {
+        "namespace": "data",
+        "involvedKind": "Pod",
+        "involvedName": "etl-runner-65b9-qqqqq",
+        "type": "Warning",
+        "reason": "FailedMount",
+        "message": "MountVolume.SetUp failed for volume \"snowflake-creds\" : secret \"snowflake-prod-v1\" not found",
+        "count": 18,
+        "lastSeen": "2026-04-25T18:44:55Z"
+      },
+      {
+        "namespace": "data",
+        "involvedKind": "Pod",
+        "involvedName": "log-shipper-fluent-2-rrrr",
+        "type": "Warning",
+        "reason": "OOMKilling",
+        "message": "Memory cgroup out of memory: log-shipper sidecar (chronic, on-going since 2026-04-15)",
+        "count": 412,
+        "lastSeen": "2026-04-25T18:43:20Z"
+      }
+    ]
+  },
+  "describe": {
+    "pod/etl-runner-65b9-qqqqq@data": "Name: etl-runner-65b9-qqqqq\nNamespace: data\nNode: gke-prod-pool-d-1\nStatus: Pending\nContainers:\n  etl-runner:\n    Image: registry.example.com/etl-runner:v1.8.0\n    State: Waiting\n      Reason: ContainerCreating\nVolumes:\n  snowflake-creds:\n    Type: Secret\n    SecretName: snowflake-prod-v1\n    Optional: false\nEvents:\n  Warning  FailedMount  18:44:55 (x18)  kubelet  MountVolume.SetUp failed for volume \"snowflake-creds\" : secret \"snowflake-prod-v1\" not found"
+  },
+  "logs": {
+    "data/etl-runner-65b9-qqqqq": []
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "instant": {
+    "container_memory_working_set_bytes{namespace=\"search\",pod=\"indexer-7c4d-eeeee\"}": {
+      "resultType": "vector",
+      "series": [
+        {
+          "metric": {
+            "namespace": "search",
+            "pod": "indexer-7c4d-eeeee",
+            "container": "indexer"
+          },
+          "value": { "timestamp": 1745611200, "value": 2254857830 }
+        }
+      ]
+    }
+  },
+  "range": {
+    "container_memory_working_set_bytes{namespace=\"search\",pod=\"indexer-7c4d-eeeee\"}": {
+      "series": [
+        {
+          "metric": {
+            "namespace": "search",
+            "pod": "indexer-7c4d-eeeee",
+            "container": "indexer"
+          },
+          "values": [
+            { "timestamp": 1745604000, "value": 2147483648 },
+            { "timestamp": 1745604134, "value": 0 },
+            { "timestamp": 1745604330, "value": 1610612736 },
+            { "timestamp": 1745607600, "value": 2040109465 },
+            { "timestamp": 1745611200, "value": 2254857830 }
+          ]
+        }
+      ]
+    }
+  },
+  "alertRules": [
+    {
+      "name": "KubernetesPodRestarted",
+      "state": "inactive",
+      "query": "increase(kube_pod_container_status_restarts_total[2h]) > 0",
+      "labels": { "severity": "warning" },
+      "lastTransition": 1745604134
+    }
+  ]
+}

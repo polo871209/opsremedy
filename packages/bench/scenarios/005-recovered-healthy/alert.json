@@ -1,0 +1,17 @@
+{
+  "alert_id": "k8s-flapping-005",
+  "alert_name": "KubernetesPodRestarted",
+  "severity": "warning",
+  "fired_at": "2026-04-25T20:00:00Z",
+  "labels": {
+    "cluster": "prod",
+    "namespace": "search",
+    "pod": "indexer-7c4d-eeeee",
+    "container": "indexer",
+    "service": "indexer"
+  },
+  "annotations": {
+    "summary": "Pod indexer-7c4d-eeeee restarted earlier today"
+  },
+  "summary": "Pod indexer-7c4d-eeeee restarted earlier today"
+}

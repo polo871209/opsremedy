@@ -1,0 +1,30 @@
+{
+  "instant": {
+    "histogram_quantile(0.99, sum(rate(pg_query_duration_seconds_bucket{namespace=\"billing\"}[5m])) by (le))": {
+      "resultType": "vector",
+      "series": [
+        {
+          "metric": { "namespace": "billing" },
+          "value": { "timestamp": 1745589900, "value": 0.85 }
+        }
+      ]
+    }
+  },
+  "range": {},
+  "alertRules": [
+    {
+      "name": "KubernetesPodCrashLooping",
+      "state": "firing",
+      "query": "rate(kube_pod_container_status_restarts_total{namespace=\"billing\",pod=~\"invoice-worker-.*\"}[5m]) > 0",
+      "labels": { "severity": "critical" },
+      "lastTransition": 1745589900
+    },
+    {
+      "name": "PostgresHighLatency",
+      "state": "firing",
+      "query": "histogram_quantile(0.99, sum(rate(pg_query_duration_seconds_bucket[5m])) by (le)) > 0.5",
+      "labels": { "severity": "warning" },
+      "lastTransition": 1745244000
+    }
+  ]
+}

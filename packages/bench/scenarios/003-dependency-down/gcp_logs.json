@@ -1,0 +1,34 @@
+{
+  "logs": [
+    {
+      "timestamp": "2026-04-25T16:19:30Z",
+      "severity": "ERROR",
+      "textPreview": "upstream auth-service.auth.svc:8080 returned 503",
+      "resource": {
+        "pod_name": "api-gateway-5f8d-aaaaa",
+        "namespace_name": "frontend",
+        "container_name": "api-gateway"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T16:19:35Z",
+      "severity": "ERROR",
+      "textPreview": "GET /api/orders 502 (auth dependency failed)",
+      "resource": {
+        "pod_name": "api-gateway-5f8d-aaaaa",
+        "namespace_name": "frontend",
+        "container_name": "api-gateway"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T16:19:10Z",
+      "severity": "ERROR",
+      "textPreview": "redis connect ECONNREFUSED 10.0.4.12:6379",
+      "resource": {
+        "pod_name": "auth-service-9c7e-zzzzz",
+        "namespace_name": "auth",
+        "container_name": "auth-service"
+      }
+    }
+  ]
+}

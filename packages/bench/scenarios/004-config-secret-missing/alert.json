@@ -1,0 +1,17 @@
+{
+  "alert_id": "k8s-pod-not-ready-004",
+  "alert_name": "KubernetesPodNotReady",
+  "severity": "critical",
+  "fired_at": "2026-04-25T18:45:00Z",
+  "labels": {
+    "cluster": "prod",
+    "namespace": "data",
+    "pod": "etl-runner-65b9-qqqqq",
+    "container": "etl-runner",
+    "service": "etl-runner"
+  },
+  "annotations": {
+    "summary": "Pod etl-runner-65b9-qqqqq has been NotReady for 10m"
+  },
+  "summary": "Pod etl-runner-65b9-qqqqq has been NotReady for 10m"
+}

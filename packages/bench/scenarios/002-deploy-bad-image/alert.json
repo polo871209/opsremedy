@@ -1,0 +1,17 @@
+{
+  "alert_id": "k8s-crashloop-002",
+  "alert_name": "KubernetesPodCrashLooping",
+  "severity": "critical",
+  "fired_at": "2026-04-25T14:05:00Z",
+  "labels": {
+    "cluster": "prod",
+    "namespace": "billing",
+    "pod": "invoice-worker-86c4d9-xyz12",
+    "container": "invoice-worker",
+    "service": "invoice-worker"
+  },
+  "annotations": {
+    "summary": "Pod invoice-worker-86c4d9-xyz12 in namespace billing is in CrashLoopBackOff"
+  },
+  "summary": "Pod invoice-worker-86c4d9-xyz12 in namespace billing is in CrashLoopBackOff"
+}

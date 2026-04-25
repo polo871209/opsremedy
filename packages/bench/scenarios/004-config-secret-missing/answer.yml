@@ -1,0 +1,21 @@
+scenario_id: 004-config-secret-missing
+difficulty: 2
+expected_category: configuration
+required_keywords:
+  - secret
+  - snowflake-prod-v1
+  - FailedMount
+forbidden_categories:
+  - resource_exhaustion
+  - healthy
+forbidden_keywords:
+  - log-shipper oom
+  - sidecar memory exhaustion
+  - oomkilled is the cause
+required_evidence_sources:
+  - k8s_events
+  - k8s_describe
+optimal_trajectory:
+  - k8s_get_events
+  - k8s_describe
+max_tool_calls: 10

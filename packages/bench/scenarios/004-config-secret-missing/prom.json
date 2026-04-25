@@ -1,0 +1,20 @@
+{
+  "instant": {},
+  "range": {},
+  "alertRules": [
+    {
+      "name": "KubernetesPodNotReady",
+      "state": "firing",
+      "query": "kube_pod_status_ready{namespace=\"data\",pod=~\"etl-runner-.*\",condition=\"true\"} == 0",
+      "labels": { "severity": "critical" },
+      "lastTransition": 1745606700
+    },
+    {
+      "name": "LogShipperSidecarOOM",
+      "state": "firing",
+      "query": "increase(kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\",pod=~\"log-shipper-.*\"}[1h]) > 0",
+      "labels": { "severity": "warning" },
+      "lastTransition": 1744761600
+    }
+  ]
+}
