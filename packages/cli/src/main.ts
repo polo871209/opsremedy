@@ -4,7 +4,7 @@ import { runBench } from "@opsremedy/bench";
 import { type Alert, runInvestigation, TraceWriter } from "@opsremedy/core";
 import { bootstrapAuth, bootstrapRealClients } from "./bootstrap.ts";
 import { fetchAlertFromGcp, parseGcpAlertUrl } from "./gcp-alert.ts";
-import { runOnboard } from "./onboard.ts";
+import { runOnboard } from "./onboard/index.ts";
 
 /** Throw to exit cleanly from a command handler. Caught by the dispatcher. */
 class CliError extends Error {
