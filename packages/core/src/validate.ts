@@ -20,78 +20,83 @@ const CATEGORIES: RootCauseCategory[] = [
   "unknown",
 ];
 
+// ---------------- coercion helpers ----------------
+
+function asString(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+function asStringArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+function asCategory(v: unknown): RootCauseCategory {
+  return CATEGORIES.includes(v as RootCauseCategory) ? (v as RootCauseCategory) : "unknown";
+}
+
+function asConfidence(v: unknown): number {
+  const n = typeof v === "number" ? v : 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function asRisk(v: unknown): "low" | "medium" | "high" {
+  return v === "low" || v === "medium" || v === "high" ? v : "medium";
+}
+
+function asValidatedClaim(v: unknown): ValidatedClaim | null {
+  if (!v || typeof v !== "object") return null;
+  const obj = v as Record<string, unknown>;
+  const claim = asString(obj.claim);
+  if (!claim) return null;
+  return { claim, evidence_sources: asStringArray(obj.evidence_sources) };
+}
+
+function asRemediation(v: unknown): RemediationProposal | null {
+  if (!v || typeof v !== "object") return null;
+  const obj = v as Record<string, unknown>;
+  const description = asString(obj.description);
+  if (!description) return null;
+  const command = asString(obj.command);
+  return {
+    description,
+    risk: asRisk(obj.risk),
+    ...(command !== null && { command }),
+  };
+}
+
+const ZERO_USAGE = {
+  input_tokens: 0,
+  output_tokens: 0,
+  cache_read_tokens: 0,
+  cache_write_tokens: 0,
+  total_tokens: 0,
+  cost_usd: 0,
+} as const;
+
 /** Shape guard for the raw LLM JSON payload. Does NOT revalidate claims. */
 export function coerceRCAReport(raw: unknown, alertId: string): RCAReport | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
 
-  const rootCause = typeof r.root_cause === "string" ? r.root_cause : "";
+  const rootCause = asString(r.root_cause);
   if (!rootCause) return null;
-
-  const category = CATEGORIES.includes(r.root_cause_category as RootCauseCategory)
-    ? (r.root_cause_category as RootCauseCategory)
-    : "unknown";
-
-  const rawConfidence = typeof r.confidence === "number" ? r.confidence : 0;
-  const confidence = Math.max(0, Math.min(1, rawConfidence));
-
-  const causalChain = Array.isArray(r.causal_chain)
-    ? (r.causal_chain as unknown[]).filter((s): s is string => typeof s === "string")
-    : [];
-
-  const validatedClaims: ValidatedClaim[] = Array.isArray(r.validated_claims)
-    ? (r.validated_claims as unknown[])
-        .map((c) => {
-          if (!c || typeof c !== "object") return null;
-          const obj = c as Record<string, unknown>;
-          const claim = typeof obj.claim === "string" ? obj.claim : null;
-          if (!claim) return null;
-          const sources = Array.isArray(obj.evidence_sources)
-            ? (obj.evidence_sources as unknown[]).filter((x): x is string => typeof x === "string")
-            : [];
-          return { claim, evidence_sources: sources };
-        })
-        .filter((c): c is ValidatedClaim => c !== null)
-    : [];
-
-  const unverifiedClaims = Array.isArray(r.unverified_claims)
-    ? (r.unverified_claims as unknown[]).filter((s): s is string => typeof s === "string")
-    : [];
-
-  const remediation: RemediationProposal[] = Array.isArray(r.remediation)
-    ? (r.remediation as unknown[])
-        .map((rem) => {
-          if (!rem || typeof rem !== "object") return null;
-          const obj = rem as Record<string, unknown>;
-          const description = typeof obj.description === "string" ? obj.description : null;
-          if (!description) return null;
-          const risk =
-            obj.risk === "low" || obj.risk === "medium" || obj.risk === "high" ? obj.risk : "medium";
-          const command = typeof obj.command === "string" ? obj.command : undefined;
-          return { description, risk, ...(command !== undefined && { command }) };
-        })
-        .filter((r): r is RemediationProposal => r !== null)
-    : [];
 
   return {
     alert_id: alertId,
     root_cause: rootCause,
-    root_cause_category: category,
-    confidence,
-    causal_chain: causalChain,
-    validated_claims: validatedClaims,
-    unverified_claims: unverifiedClaims,
-    remediation,
+    root_cause_category: asCategory(r.root_cause_category),
+    confidence: asConfidence(r.confidence),
+    causal_chain: asStringArray(r.causal_chain),
+    validated_claims: Array.isArray(r.validated_claims)
+      ? r.validated_claims.map(asValidatedClaim).filter((c): c is ValidatedClaim => c !== null)
+      : [],
+    unverified_claims: asStringArray(r.unverified_claims),
+    remediation: Array.isArray(r.remediation)
+      ? r.remediation.map(asRemediation).filter((r): r is RemediationProposal => r !== null)
+      : [],
     tools_called: [],
     duration_ms: 0,
-    usage: {
-      input_tokens: 0,
-      output_tokens: 0,
-      cache_read_tokens: 0,
-      cache_write_tokens: 0,
-      total_tokens: 0,
-      cost_usd: 0,
-    },
+    usage: { ...ZERO_USAGE },
   };
 }
 
