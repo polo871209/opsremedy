@@ -6,27 +6,32 @@ import { bootstrapAuth, bootstrapRealClients } from "./bootstrap.ts";
 import { fetchAlertFromGcp, parseGcpAlertUrl } from "./gcp-alert.ts";
 import { runOnboard } from "./onboard.ts";
 
-function usage(): never {
-  console.error(
-    [
-      "opsremedy onboard",
-      "opsremedy investigate (-i <alert.json> | --url <gcp-monitoring-url>) [--markdown <path>] [--trace <path>] [--max-tool-calls N]",
-      "opsremedy bench [--scenario <id>] [--json]",
-    ].join("\n"),
-  );
-  process.exit(2);
+/** Throw to exit cleanly from a command handler. Caught by the dispatcher. */
+class CliError extends Error {
+  constructor(
+    message: string,
+    public readonly code: number = 2,
+  ) {
+    super(message);
+  }
 }
+
+const USAGE = [
+  "opsremedy onboard",
+  "opsremedy investigate (-i <alert.json> | --url <gcp-monitoring-url>) [--markdown <path>] [--trace <path>] [--max-tool-calls N]",
+  "opsremedy bench [--scenario <id>] [--json]",
+].join("\n");
 
 function parseArgs(argv: string[]): { cmd: string; opts: Record<string, string | boolean> } {
   const [, , cmd, ...rest] = argv;
-  if (!cmd) usage();
+  if (!cmd) throw new CliError(USAGE);
   const opts: Record<string, string | boolean> = {};
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (!arg) continue;
     if (arg === "-i") {
       const value = rest[i + 1];
-      if (!value) usage();
+      if (!value) throw new CliError(USAGE);
       opts.input = value;
       i++;
     } else if (arg.startsWith("--")) {
@@ -47,39 +52,26 @@ async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<v
   const input = typeof opts.input === "string" ? opts.input : undefined;
   const url = typeof opts.url === "string" ? opts.url : undefined;
   if (!input && !url) {
-    console.error("Missing -i <alert.json> or --url <gcp-monitoring-url>");
-    process.exit(2);
+    throw new CliError("Missing -i <alert.json> or --url <gcp-monitoring-url>");
   }
   if (input && url) {
-    console.error("Pass either -i or --url, not both");
-    process.exit(2);
+    throw new CliError("Pass either -i or --url, not both");
   }
 
   let alert: Alert;
   if (input) {
     alert = JSON.parse(readFileSync(input, "utf8")) as Alert;
   } else {
-    try {
-      const parsed = parseGcpAlertUrl(url as string);
-      console.error(`[fetch] GCP ${parsed.kind} ${parsed.id} in ${parsed.projectId}...`);
-      alert = await fetchAlertFromGcp(parsed);
-      console.error(`[fetch] alert: ${alert.alert_name} severity=${alert.severity}`);
-    } catch (err) {
-      console.error((err as Error).message);
-      process.exit(2);
-    }
+    const parsed = parseGcpAlertUrl(url as string);
+    console.error(`[fetch] GCP ${parsed.kind} ${parsed.id} in ${parsed.projectId}...`);
+    alert = await fetchAlertFromGcp(parsed);
+    console.error(`[fetch] alert: ${alert.alert_name} severity=${alert.severity}`);
   }
 
   const maxToolCalls =
     typeof opts["max-tool-calls"] === "string" ? Number(opts["max-tool-calls"]) : undefined;
 
-  let settings: Awaited<ReturnType<typeof bootstrapRealClients>>["settings"];
-  try {
-    settings = (await bootstrapRealClients()).settings;
-  } catch (err) {
-    console.error((err as Error).message);
-    process.exit(2);
-  }
+  const { settings } = await bootstrapRealClients();
 
   const tracePath = typeof opts.trace === "string" ? opts.trace : undefined;
   const trace = tracePath ? new TraceWriter(tracePath) : undefined;
@@ -122,13 +114,7 @@ async function cmdBench(opts: Record<string, string | boolean>): Promise<void> {
   const scenario = typeof opts.scenario === "string" ? opts.scenario : undefined;
   const asJson = opts.json === true;
 
-  let settings: Awaited<ReturnType<typeof bootstrapAuth>>["settings"];
-  try {
-    settings = (await bootstrapAuth()).settings;
-  } catch (err) {
-    console.error((err as Error).message);
-    process.exit(2);
-  }
+  const { settings } = await bootstrapAuth();
 
   const result = await runBench({
     ...(scenario !== undefined && { scenario }),
@@ -136,7 +122,7 @@ async function cmdBench(opts: Record<string, string | boolean>): Promise<void> {
     provider: settings.llm.provider,
     model: settings.llm.model,
   });
-  process.exit(result.allPassed ? 0 : 1);
+  if (!result.allPassed) throw new CliError("bench failures", 1);
 }
 
 function renderMarkdown(report: Awaited<ReturnType<typeof runInvestigation>>): string {
@@ -175,17 +161,30 @@ function renderMarkdown(report: Awaited<ReturnType<typeof runInvestigation>>): s
   return lines.join("\n");
 }
 
-const { cmd, opts } = parseArgs(process.argv);
-switch (cmd) {
-  case "onboard":
-    await runOnboard();
-    break;
-  case "investigate":
-    await cmdInvestigate(opts);
-    break;
-  case "bench":
-    await cmdBench(opts);
-    break;
-  default:
-    usage();
+async function dispatch(): Promise<void> {
+  const { cmd, opts } = parseArgs(process.argv);
+  switch (cmd) {
+    case "onboard":
+      await runOnboard();
+      return;
+    case "investigate":
+      await cmdInvestigate(opts);
+      return;
+    case "bench":
+      await cmdBench(opts);
+      return;
+    default:
+      throw new CliError(USAGE);
+  }
+}
+
+try {
+  await dispatch();
+} catch (err) {
+  if (err instanceof CliError) {
+    console.error(err.message);
+    process.exit(err.code);
+  }
+  console.error((err as Error).message);
+  process.exit(1);
 }
