@@ -1,0 +1,16 @@
+{
+  "name": "@opsremedy/cli",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "opsremedy": "./src/main.ts"
+  },
+  "dependencies": {
+    "@mariozechner/pi-ai": "0.70.2",
+    "@opsremedy/bench": "workspace:*",
+    "@opsremedy/clients": "workspace:*",
+    "@opsremedy/core": "workspace:*",
+    "yaml": "2.8.3"
+  }
+}

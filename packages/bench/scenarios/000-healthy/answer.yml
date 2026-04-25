@@ -1,0 +1,21 @@
+scenario_id: 000-healthy
+difficulty: 2
+expected_category: healthy
+required_keywords:
+  - recovered
+forbidden_categories:
+  - resource_exhaustion
+  - configuration
+  - dependency
+  - deployment
+  - infrastructure
+  - data_quality
+  - unknown
+forbidden_keywords:
+  - OOMKilled
+  - CrashLoopBackOff
+required_evidence_sources:
+  - prom_series
+optimal_trajectory:
+  - query_prom_range
+max_tool_calls: 8

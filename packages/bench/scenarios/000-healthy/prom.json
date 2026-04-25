@@ -1,0 +1,48 @@
+{
+  "instant": {
+    "rate(container_cpu_usage_seconds_total{namespace=\"search\",pod=\"search-api-6c4d8b9f7-xyzab\"}[5m])": {
+      "resultType": "vector",
+      "series": [
+        {
+          "metric": {
+            "namespace": "search",
+            "pod": "search-api-6c4d8b9f7-xyzab",
+            "container": "search-api"
+          },
+          "value": { "timestamp": 1745578800, "value": 0.18 }
+        }
+      ]
+    }
+  },
+  "range": {
+    "rate(container_cpu_usage_seconds_total{namespace=\"search\",pod=\"search-api-6c4d8b9f7-xyzab\"}[5m])": {
+      "series": [
+        {
+          "metric": {
+            "namespace": "search",
+            "pod": "search-api-6c4d8b9f7-xyzab",
+            "container": "search-api"
+          },
+          "values": [
+            { "timestamp": 1745577000, "value": 0.22 },
+            { "timestamp": 1745577300, "value": 0.25 },
+            { "timestamp": 1745577600, "value": 0.81 },
+            { "timestamp": 1745577900, "value": 0.85 },
+            { "timestamp": 1745578200, "value": 0.34 },
+            { "timestamp": 1745578500, "value": 0.2 },
+            { "timestamp": 1745578800, "value": 0.18 }
+          ]
+        }
+      ]
+    }
+  },
+  "alertRules": [
+    {
+      "name": "HighCPUUsage",
+      "state": "inactive",
+      "query": "rate(container_cpu_usage_seconds_total[5m]) > 0.8",
+      "labels": { "severity": "warning" },
+      "lastTransition": 1745578500
+    }
+  ]
+}

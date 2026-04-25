@@ -1,0 +1,201 @@
+/** Shared data model for the whole agent. */
+
+export type Severity = "critical" | "warning" | "info";
+
+export interface Alert {
+  alert_id: string;
+  alert_name: string;
+  severity: Severity;
+  /** ISO8601 timestamp of when the alert fired. */
+  fired_at: string;
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  summary: string;
+  /** Original payload from the alert system, passed through untouched. */
+  raw?: unknown;
+}
+
+// -------------------- evidence shapes --------------------
+
+export interface LogEntry {
+  timestamp: string;
+  severity: string;
+  /** Short rendered preview (single line). Full payload lives in `payload`. */
+  textPreview: string;
+  payload?: Record<string, unknown>;
+  resource?: Record<string, string>;
+  labels?: Record<string, string>;
+}
+
+export interface PromSample {
+  timestamp: number; // seconds
+  value: number;
+}
+
+export interface PromInstantResult {
+  /** `scalar`, `vector`, or `matrix` matches Prom API. */
+  resultType: "scalar" | "vector" | "matrix" | "string";
+  /** Vector: per-series scalar; scalar: single value. */
+  series: Array<{ metric: Record<string, string>; value: PromSample }>;
+}
+
+export interface PromSeriesResult {
+  series: Array<{ metric: Record<string, string>; values: PromSample[] }>;
+}
+
+export interface PromRuleState {
+  name: string;
+  state: "firing" | "pending" | "inactive";
+  query: string;
+  labels: Record<string, string>;
+  /** Unix seconds when rule transitioned to current state. */
+  lastTransition?: number;
+}
+
+export interface TraceSummary {
+  traceId: string;
+  rootService: string;
+  rootOperation: string;
+  durationMs: number;
+  hasError: boolean;
+  spanCount: number;
+  /** Brief text summary of the slowest or errored span in the trace. */
+  noteworthySpan?: string;
+}
+
+export interface ServiceDep {
+  parent: string;
+  child: string;
+  callCount: number;
+}
+
+export interface PodSummary {
+  namespace: string;
+  name: string;
+  phase: string;
+  ready: boolean;
+  restarts: number;
+  /** Reason from the last terminated container state if any (e.g. OOMKilled). */
+  lastTerminationReason?: string;
+  node?: string;
+}
+
+export interface EventSummary {
+  namespace: string;
+  involvedKind: string;
+  involvedName: string;
+  type: "Normal" | "Warning";
+  reason: string;
+  message: string;
+  count: number;
+  lastSeen: string;
+}
+
+export interface RemediationProposal {
+  description: string;
+  /** kubectl command or manifest patch. Dry-run only — never executed. */
+  command?: string;
+  risk: "low" | "medium" | "high";
+}
+
+export interface ToolCallAudit {
+  name: string;
+  args: unknown;
+  ok: boolean;
+  ms: number;
+  error?: string;
+}
+
+export interface Evidence {
+  gcp_logs?: LogEntry[];
+  gcp_error_logs?: LogEntry[];
+
+  prom_instant?: Record<string, PromInstantResult>;
+  prom_series?: Record<string, PromSeriesResult>;
+  prom_alert_rules?: PromRuleState[];
+
+  jaeger_traces?: TraceSummary[];
+  jaeger_service_deps?: ServiceDep[];
+
+  k8s_pods?: PodSummary[];
+  k8s_events?: EventSummary[];
+  k8s_describe?: Record<string, string>;
+  k8s_pod_logs?: Record<string, string[]>;
+
+  remediation_proposals?: RemediationProposal[];
+
+  [key: string]: unknown;
+}
+
+// -------------------- agent state --------------------
+
+export interface InvestigationContext {
+  alert: Alert;
+  evidence: Evidence;
+  tools_called: ToolCallAudit[];
+  /** Total tool call count; compared against `max_tool_calls`. */
+  loop_count: number;
+  max_tool_calls: number;
+  started_at: number;
+}
+
+// -------------------- output --------------------
+
+export type RootCauseCategory =
+  | "resource_exhaustion"
+  | "configuration"
+  | "dependency"
+  | "deployment"
+  | "infrastructure"
+  | "data_quality"
+  | "healthy"
+  | "unknown";
+
+export interface ValidatedClaim {
+  claim: string;
+  evidence_sources: string[];
+}
+
+export interface UsageSummary {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+}
+
+export interface RCAReport {
+  alert_id: string;
+  root_cause: string;
+  root_cause_category: RootCauseCategory;
+  /** Recomputed by code after claim validation; not trusted from LLM output. */
+  confidence: number;
+  causal_chain: string[];
+  validated_claims: ValidatedClaim[];
+  unverified_claims: string[];
+  remediation: RemediationProposal[];
+  tools_called: string[];
+  duration_ms: number;
+  /** Aggregate token + cost usage across both phases. */
+  usage: UsageSummary;
+}
+
+// -------------------- constants --------------------
+
+export const ALL_EVIDENCE_KEYS = [
+  "gcp_logs",
+  "gcp_error_logs",
+  "prom_instant",
+  "prom_series",
+  "prom_alert_rules",
+  "jaeger_traces",
+  "jaeger_service_deps",
+  "k8s_pods",
+  "k8s_events",
+  "k8s_describe",
+  "k8s_pod_logs",
+  "remediation_proposals",
+] as const;
+
+export type EvidenceKey = (typeof ALL_EVIDENCE_KEYS)[number];

@@ -1,0 +1,67 @@
+{
+  "pods": {
+    "search": [
+      {
+        "namespace": "search",
+        "name": "search-api-6c4d8b9f7-xyzab",
+        "phase": "Running",
+        "ready": true,
+        "restarts": 0,
+        "node": "gke-prod-pool-b-3"
+      },
+      {
+        "namespace": "search",
+        "name": "search-api-6c4d8b9f7-mnopq",
+        "phase": "Running",
+        "ready": true,
+        "restarts": 0,
+        "node": "gke-prod-pool-b-4"
+      }
+    ]
+  },
+  "events": {
+    "search": [
+      {
+        "namespace": "search",
+        "involvedKind": "Pod",
+        "involvedName": "search-api-6c4d8b9f7-xyzab",
+        "type": "Normal",
+        "reason": "Scheduled",
+        "message": "Successfully assigned search/search-api-6c4d8b9f7-xyzab to gke-prod-pool-b-3",
+        "count": 1,
+        "lastSeen": "2026-04-25T08:00:00Z"
+      },
+      {
+        "namespace": "search",
+        "involvedKind": "Pod",
+        "involvedName": "search-api-6c4d8b9f7-xyzab",
+        "type": "Normal",
+        "reason": "Pulled",
+        "message": "Container image already present on machine",
+        "count": 1,
+        "lastSeen": "2026-04-25T08:00:05Z"
+      },
+      {
+        "namespace": "search",
+        "involvedKind": "Pod",
+        "involvedName": "search-api-6c4d8b9f7-xyzab",
+        "type": "Normal",
+        "reason": "Started",
+        "message": "Started container search-api",
+        "count": 1,
+        "lastSeen": "2026-04-25T08:00:10Z"
+      }
+    ]
+  },
+  "describe": {
+    "pod/search-api-6c4d8b9f7-xyzab@search": "Name: search-api-6c4d8b9f7-xyzab\nNamespace: search\nNode: gke-prod-pool-b-3\nStatus: Running\nContainers:\n  search-api:\n    Image: registry.example.com/search-api:v1.8.2\n    Limits:\n      memory: 512Mi\n      cpu: 1000m\n    Requests:\n      memory: 256Mi\n      cpu: 250m\n    State: Running\n      Started: 2026-04-25T08:00:10Z\n    Ready: True\n    Restart Count: 0\nEvents:\n  Normal  Scheduled  08:00:00  default-scheduler  Successfully assigned\n  Normal  Started    08:00:10  kubelet            Started container search-api"
+  },
+  "logs": {
+    "search/search-api-6c4d8b9f7-xyzab": [
+      "INFO  startup complete listening=:8080",
+      "INFO  request_id=q-101 query=foo latency_ms=42",
+      "INFO  request_id=q-102 query=bar latency_ms=38",
+      "INFO  request_id=q-103 query=baz latency_ms=55"
+    ]
+  }
+}

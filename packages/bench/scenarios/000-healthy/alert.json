@@ -1,0 +1,18 @@
+{
+  "alert_id": "k8s-cpu-transient-001",
+  "alert_name": "HighCPUUsage",
+  "severity": "warning",
+  "fired_at": "2026-04-25T11:00:00Z",
+  "labels": {
+    "cluster": "prod",
+    "namespace": "search",
+    "pod": "search-api-6c4d8b9f7-xyzab",
+    "container": "search-api",
+    "service": "search-api"
+  },
+  "annotations": {
+    "summary": "Pod search-api CPU usage exceeded 80% for 5 minutes",
+    "runbook_url": "https://runbooks.example.com/cpu-high"
+  },
+  "summary": "Pod search-api CPU usage exceeded 80% for 5 minutes"
+}

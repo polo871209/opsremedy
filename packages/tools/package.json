@@ -1,0 +1,17 @@
+{
+  "name": "@opsremedy/tools",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "0.70.2",
+    "@mariozechner/pi-ai": "0.70.2",
+    "@opsremedy/core": "workspace:*",
+    "@opsremedy/clients": "workspace:*",
+    "typebox": "1.1.33"
+  }
+}
