@@ -1,8 +1,8 @@
 import { Agent } from "@mariozechner/pi-agent-core";
-import { getModel } from "@mariozechner/pi-ai";
 import { makeAllTools } from "@opsremedy/tools";
 import { gatherSystemPrompt } from "./prompts.ts";
 import type { InvestigationContext } from "./types.ts";
+import { resolveModel } from "./util/model.ts";
 import { sumUsage, type UsageTotal } from "./util/usage.ts";
 
 export interface GatherOptions {
@@ -19,7 +19,7 @@ export interface GatherOptions {
  */
 export async function gatherEvidence(ctx: InvestigationContext, options: GatherOptions): Promise<UsageTotal> {
   const tools = makeAllTools(ctx);
-  const model = getModel(options.provider as "anthropic", options.model as never);
+  const model = resolveModel(options.provider, options.model);
 
   const agent = new Agent({
     initialState: {

@@ -1,8 +1,8 @@
 import { Agent } from "@mariozechner/pi-agent-core";
-import { getModel } from "@mariozechner/pi-ai";
 import { DIAGNOSE_SYSTEM_PROMPT, renderDiagnosisUserPrompt } from "./prompts.ts";
 import type { InvestigationContext, RCAReport } from "./types.ts";
 import { extractJsonObject, safeParse } from "./util/json.ts";
+import { resolveModel } from "./util/model.ts";
 import { sumUsage, type UsageTotal, ZERO_USAGE } from "./util/usage.ts";
 import { coerceRCAReport } from "./validate.ts";
 
@@ -21,7 +21,7 @@ export interface DiagnoseResult {
  * Retries once on parse failure with a correction prompt.
  */
 export async function diagnose(ctx: InvestigationContext, options: DiagnoseOptions): Promise<DiagnoseResult> {
-  const model = getModel(options.provider as "anthropic", options.model as never);
+  const model = resolveModel(options.provider, options.model);
 
   const agent = new Agent({
     initialState: {

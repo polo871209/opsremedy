@@ -1,5 +1,6 @@
 import { input, password, search, select } from "@inquirer/prompts";
-import { getModels, getProviders, registerBuiltInApiProviders } from "@mariozechner/pi-ai";
+import { registerBuiltInApiProviders } from "@mariozechner/pi-ai";
+import { listModels, listProviders } from "@opsremedy/core";
 import {
   DEFAULT_JAEGER_URL,
   DEFAULT_PROM_URL,
@@ -124,8 +125,8 @@ interface LlmAnswers {
 
 async function sectionLlm(cfg: OpsremedyConfig, creds: OpsremedyCredentials): Promise<LlmAnswers> {
   console.log("== LLM ==");
-  const providers = getProviders();
-  const defaultProvider = providers.includes(cfg.llm?.provider as never)
+  const providers = listProviders();
+  const defaultProvider = providers.includes(cfg.llm?.provider as (typeof providers)[number])
     ? (cfg.llm?.provider as string)
     : "anthropic";
 
@@ -135,7 +136,7 @@ async function sectionLlm(cfg: OpsremedyConfig, creds: OpsremedyCredentials): Pr
     default: defaultProvider,
   });
 
-  const models = getModels(provider as never);
+  const models = listModels(provider);
   if (models.length === 0) throw new Error(`Provider ${provider} has no models registered.`);
   const modelIds = models.map((m) => m.id);
   const defaultModel = modelIds.includes(cfg.llm?.model ?? "")
