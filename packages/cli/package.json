@@ -12,6 +12,7 @@
     "@opsremedy/bench": "workspace:*",
     "@opsremedy/clients": "workspace:*",
     "@opsremedy/core": "workspace:*",
+    "google-auth-library": "10.6.2",
     "yaml": "2.8.3"
   }
 }

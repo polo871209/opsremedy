@@ -3,13 +3,14 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { runBench } from "@opsremedy/bench";
 import { type Alert, runInvestigation, TraceWriter } from "@opsremedy/core";
 import { bootstrapRealClients } from "./bootstrap.ts";
+import { fetchAlertFromGcp, parseGcpAlertUrl } from "./gcp-alert.ts";
 import { runOnboard } from "./onboard.ts";
 
 function usage(): never {
   console.error(
     [
       "opsremedy onboard",
-      "opsremedy investigate -i <alert.json> [--markdown <path>] [--trace <path>] [--max-tool-calls N]",
+      "opsremedy investigate (-i <alert.json> | --url <gcp-monitoring-url>) [--markdown <path>] [--trace <path>] [--max-tool-calls N]",
       "opsremedy bench [--scenario <id>] [--json]",
     ].join("\n"),
   );
@@ -44,11 +45,31 @@ function parseArgs(argv: string[]): { cmd: string; opts: Record<string, string |
 
 async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<void> {
   const input = typeof opts.input === "string" ? opts.input : undefined;
-  if (!input) {
-    console.error("Missing -i <alert.json>");
+  const url = typeof opts.url === "string" ? opts.url : undefined;
+  if (!input && !url) {
+    console.error("Missing -i <alert.json> or --url <gcp-monitoring-url>");
     process.exit(2);
   }
-  const alert = JSON.parse(readFileSync(input, "utf8")) as Alert;
+  if (input && url) {
+    console.error("Pass either -i or --url, not both");
+    process.exit(2);
+  }
+
+  let alert: Alert;
+  if (input) {
+    alert = JSON.parse(readFileSync(input, "utf8")) as Alert;
+  } else {
+    try {
+      const parsed = parseGcpAlertUrl(url as string);
+      console.error(`[fetch] GCP ${parsed.kind} ${parsed.id} in ${parsed.projectId}...`);
+      alert = await fetchAlertFromGcp(parsed);
+      console.error(`[fetch] alert: ${alert.alert_name} severity=${alert.severity}`);
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(2);
+    }
+  }
+
   const maxToolCalls =
     typeof opts["max-tool-calls"] === "string" ? Number(opts["max-tool-calls"]) : undefined;
 
