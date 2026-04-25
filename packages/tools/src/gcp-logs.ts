@@ -3,7 +3,7 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { recordToolCall, truncate, windowAroundAlert } from "./shared.ts";
+import { truncate, windowAroundAlert } from "./shared.ts";
 
 export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -27,56 +27,38 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
       ),
       max_results: Type.Optional(Type.Number({ minimum: 1, maximum: 200, default: 50 })),
     }),
-    execute: async (_toolCallId, params, signal) => {
-      const t0 = Date.now();
+    ctx,
+    run: async (params, signal) => {
       const window = windowAroundAlert(ctx, params.time_window_minutes ?? 30);
-      try {
-        const entries = await getClients().gcp.search({
-          filter: params.filter,
-          from: window.from,
-          to: window.to,
-          max: params.max_results ?? 50,
-          ...(signal !== undefined && { signal }),
-        });
+      const entries = await getClients().gcp.search({
+        filter: params.filter,
+        from: window.from,
+        to: window.to,
+        max: params.max_results ?? 50,
+        ...(signal !== undefined && { signal }),
+      });
 
-        const existing = ctx.evidence.gcp_logs ?? [];
-        ctx.evidence.gcp_logs = [...existing, ...entries];
-        ctx.evidence.gcp_error_logs = (ctx.evidence.gcp_logs ?? []).filter((e) =>
-          ["ERROR", "CRITICAL", "ALERT", "EMERGENCY"].includes(e.severity),
-        );
+      const existing = ctx.evidence.gcp_logs ?? [];
+      ctx.evidence.gcp_logs = [...existing, ...entries];
+      ctx.evidence.gcp_error_logs = (ctx.evidence.gcp_logs ?? []).filter((e) =>
+        ["ERROR", "CRITICAL", "ALERT", "EMERGENCY"].includes(e.severity),
+      );
 
-        recordToolCall(ctx, {
-          name: "query_gcp_logs",
-          args: params,
-          ok: true,
-          ms: Date.now() - t0,
-        });
+      const errorCount = ctx.evidence.gcp_error_logs.length;
+      const topMessages = entries
+        .slice(0, 5)
+        .map((e) => `[${e.severity}] ${truncate(e.textPreview, 200)}`)
+        .join(" | ");
 
-        const errorCount = ctx.evidence.gcp_error_logs.length;
-        const topMessages = entries
-          .slice(0, 5)
-          .map((e) => `[${e.severity}] ${truncate(e.textPreview, 200)}`)
-          .join(" | ");
+      const summary =
+        entries.length === 0
+          ? "No logs matched the filter in the window."
+          : `Fetched ${entries.length} log entries (${errorCount} at ERROR+). Top: ${topMessages}`;
 
-        const summary =
-          entries.length === 0
-            ? "No logs matched the filter in the window."
-            : `Fetched ${entries.length} log entries (${errorCount} at ERROR+). Top: ${topMessages}`;
-
-        return {
-          content: [{ type: "text", text: summary }],
-          details: { filter: params.filter, count: entries.length, errors: errorCount },
-        };
-      } catch (err) {
-        recordToolCall(ctx, {
-          name: "query_gcp_logs",
-          args: params,
-          ok: false,
-          ms: Date.now() - t0,
-          error: (err as Error).message,
-        });
-        throw err;
-      }
+      return {
+        summary,
+        details: { filter: params.filter, count: entries.length, errors: errorCount },
+      };
     },
   });
 }

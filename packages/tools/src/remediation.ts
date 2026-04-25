@@ -2,7 +2,6 @@ import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { recordToolCall } from "./shared.ts";
 
 export function makeProposeRemediationTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -22,8 +21,8 @@ export function makeProposeRemediationTool(ctx: InvestigationContext): AgentTool
       ),
       risk: Type.Union([Type.Literal("low"), Type.Literal("medium"), Type.Literal("high")]),
     }),
-    execute: async (_toolCallId, params) => {
-      const t0 = Date.now();
+    ctx,
+    run: async (params) => {
       const list = ctx.evidence.remediation_proposals ?? [];
       list.push({
         description: params.description,
@@ -31,14 +30,8 @@ export function makeProposeRemediationTool(ctx: InvestigationContext): AgentTool
         risk: params.risk,
       });
       ctx.evidence.remediation_proposals = list;
-      recordToolCall(ctx, {
-        name: "propose_remediation",
-        args: params,
-        ok: true,
-        ms: Date.now() - t0,
-      });
       return {
-        content: [{ type: "text", text: `Recorded remediation: ${params.description}` }],
+        summary: `Recorded remediation: ${params.description}`,
         details: { count: list.length },
       };
     },
