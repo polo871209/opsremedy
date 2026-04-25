@@ -28,10 +28,19 @@ export interface OpsremedyConfig {
   };
   k8s?: {
     kubeconfig?: string;
+    context?: string;
   };
   agent?: {
     max_tool_calls?: number;
   };
+}
+
+export interface OAuthCredentialRecord {
+  refresh: string;
+  access: string;
+  /** Unix epoch ms when access token expires. */
+  expires: number;
+  [key: string]: unknown;
 }
 
 /**
@@ -39,8 +48,10 @@ export interface OpsremedyConfig {
  * Keyed by pi-ai provider id (e.g. `anthropic`, `openai`).
  */
 export interface OpsremedyCredentials {
-  /** Map provider id → API key. */
+  /** Map provider id → API key (for providers that use static keys). */
   llm_keys?: Record<string, string>;
+  /** Map provider id → OAuth credentials (for subscription-based providers). */
+  llm_oauth?: Record<string, OAuthCredentialRecord>;
   /** Optional infra secrets. */
   prom_bearer_token?: string;
   prom_password?: string;
@@ -129,7 +140,7 @@ export interface ResolvedSettings {
     basicAuth: { user: string; password: string } | undefined;
   };
   jaeger: { url: string; token: string | undefined };
-  k8s: { kubeconfigPath: string | undefined };
+  k8s: { kubeconfigPath: string | undefined; context: string | undefined };
   agent: { maxToolCalls: number };
 }
 
@@ -148,6 +159,7 @@ export function resolveSettings(cfg: OpsremedyConfig, creds: OpsremedyCredential
   const jaegerToken = env.JAEGER_TOKEN ?? creds.jaeger_token;
 
   const kubeconfig = env.KUBECONFIG ?? cfg.k8s?.kubeconfig;
+  const k8sContext = env.OPSREMEDY_K8S_CONTEXT ?? cfg.k8s?.context;
 
   const gcpProject = env.GCP_PROJECT_ID ?? cfg.gcp?.project_id;
   const gcpCreds = env.GOOGLE_APPLICATION_CREDENTIALS ?? cfg.gcp?.credentials_path;
@@ -165,7 +177,7 @@ export function resolveSettings(cfg: OpsremedyConfig, creds: OpsremedyCredential
       basicAuth: promUser && promPass ? { user: promUser, password: promPass } : undefined,
     },
     jaeger: { url: jaegerUrl, token: jaegerToken },
-    k8s: { kubeconfigPath: kubeconfig },
+    k8s: { kubeconfigPath: kubeconfig, context: k8sContext },
     agent: { maxToolCalls: Number.isFinite(maxToolCalls) ? maxToolCalls : DEFAULT_MAX_TOOL_CALLS },
   };
 }

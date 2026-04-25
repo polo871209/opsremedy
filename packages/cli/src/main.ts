@@ -54,7 +54,7 @@ async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<v
 
   let settings: Awaited<ReturnType<typeof bootstrapRealClients>>["settings"];
   try {
-    settings = bootstrapRealClients().settings;
+    settings = (await bootstrapRealClients()).settings;
   } catch (err) {
     console.error((err as Error).message);
     process.exit(2);

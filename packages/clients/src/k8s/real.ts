@@ -11,6 +11,8 @@ import type {
 export interface RealK8sClientOptions {
   /** Path to kubeconfig. If unset, falls back to KUBECONFIG env or default loaders. */
   kubeconfigPath?: string;
+  /** Override the active kubeconfig context. Falls through to current-context. */
+  context?: string;
 }
 
 /**
@@ -26,6 +28,9 @@ export class RealK8sClient implements K8sClient {
       kc.loadFromFile(opts.kubeconfigPath);
     } else {
       kc.loadFromDefault();
+    }
+    if (opts.context) {
+      kc.setCurrentContext(opts.context);
     }
     this.core = kc.makeApiClient(CoreV1Api);
   }

@@ -1,4 +1,4 @@
-import { findEnvKeys } from "@mariozechner/pi-ai";
+import { findEnvKeys, registerBuiltInApiProviders } from "@mariozechner/pi-ai";
 import {
   RealGcpLoggingClient,
   RealJaegerClient,
@@ -12,30 +12,39 @@ import {
   credentialsPath,
   loadConfig,
   loadCredentials,
+  type OpsremedyCredentials,
   type ResolvedSettings,
   resolveSettings,
+  saveCredentials,
 } from "./config.ts";
+import { ensureFreshOAuthToken } from "./oauth.ts";
 
 export interface BootstrapResult {
   settings: ResolvedSettings;
 }
 
 /**
- * Load config + credentials, fail-fast if required fields are missing,
- * push secrets into process.env so pi-ai picks them up, then wire real clients.
+ * Load config + credentials, refresh OAuth tokens if needed, fail-fast on
+ * missing required fields, push secrets into process.env so pi-ai's built-in
+ * key resolution finds them, then wire the real clients into the registry.
  */
-export function bootstrapRealClients(): BootstrapResult {
+export async function bootstrapRealClients(): Promise<BootstrapResult> {
+  registerBuiltInApiProviders();
+
   const cfg = loadConfig();
-  const creds = loadCredentials();
+  let creds = loadCredentials();
   const settings = resolveSettings(cfg, creds);
 
-  // Make LLM keys visible to pi-ai's getEnvApiKey().
+  creds = await refreshOAuthTokens(creds, settings.llm.provider);
+
+  // Make LLM keys (static and OAuth) visible to pi-ai's getEnvApiKey().
   const envKeyMap = new Map<string, string[]>();
   for (const provider of Object.keys(creds.llm_keys ?? {})) {
     const names = findEnvKeys(provider);
     if (names && names.length > 0) envKeyMap.set(provider, names);
   }
   applyCredentialsToEnv(creds, envKeyMap);
+  pushOAuthTokensToEnv(creds);
 
   // Optional ADC pointer.
   if (settings.gcp.credentialsPath && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
@@ -70,8 +79,69 @@ export function bootstrapRealClients(): BootstrapResult {
     }),
     k8s: new RealK8sClient({
       ...(settings.k8s.kubeconfigPath && { kubeconfigPath: settings.k8s.kubeconfigPath }),
+      ...(settings.k8s.context && { context: settings.k8s.context }),
     }),
   });
 
   return { settings };
+}
+
+/**
+ * For the active LLM provider, refresh OAuth credentials if they're near
+ * expiry. Persists updated creds back to disk. Other providers' OAuth tokens
+ * are left untouched.
+ */
+async function refreshOAuthTokens(
+  creds: OpsremedyCredentials,
+  activeProvider: string,
+): Promise<OpsremedyCredentials> {
+  const stored = creds.llm_oauth?.[activeProvider];
+  if (!stored) return creds;
+
+  try {
+    const { creds: updated, refreshed } = await ensureFreshOAuthToken(activeProvider, stored);
+    if (!refreshed) return creds;
+    const next: OpsremedyCredentials = {
+      ...creds,
+      llm_oauth: { ...(creds.llm_oauth ?? {}), [activeProvider]: updated },
+    };
+    saveCredentials(next);
+    return next;
+  } catch (err) {
+    throw new Error(
+      `Failed to refresh OAuth token for ${activeProvider}: ${(err as Error).message}\n` +
+        `Re-run \`opsremedy onboard\` to log in again.`,
+    );
+  }
+}
+
+/**
+ * For each provider with stored OAuth credentials, expose the access token
+ * via the appropriate env var so pi-ai's stream functions pick it up.
+ */
+function pushOAuthTokensToEnv(creds: OpsremedyCredentials): void {
+  for (const [provider, oauth] of Object.entries(creds.llm_oauth ?? {})) {
+    const envName = oauthEnvVarFor(provider);
+    if (!envName) continue;
+    if (!process.env[envName]) process.env[envName] = oauth.access;
+  }
+}
+
+function oauthEnvVarFor(provider: string): string | undefined {
+  // pi-ai conventions for OAuth-capable providers.
+  switch (provider) {
+    case "anthropic":
+      return "ANTHROPIC_OAUTH_TOKEN";
+    case "github-copilot":
+      return "COPILOT_GITHUB_TOKEN";
+    case "google-gemini-cli":
+    case "google-antigravity":
+      // pi-ai resolves these via auth file lookups; nothing to set here.
+      return undefined;
+    case "openai-codex":
+      // Codex uses its own token store, not an env var.
+      return undefined;
+    default:
+      return undefined;
+  }
 }

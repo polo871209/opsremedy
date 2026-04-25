@@ -1,207 +1,408 @@
-import { existsSync } from "node:fs";
-import { createInterface, type Interface } from "node:readline/promises";
-import { findEnvKeys, getModels, getProviders } from "@mariozechner/pi-ai";
+import { input, password, search, select } from "@inquirer/prompts";
+import { getModels, getProviders, registerBuiltInApiProviders } from "@mariozechner/pi-ai";
 import {
   DEFAULT_JAEGER_URL,
-  DEFAULT_KUBECONFIG,
   DEFAULT_PROM_URL,
   loadConfig,
   loadCredentials,
+  type OAuthCredentialRecord,
   type OpsremedyConfig,
   type OpsremedyCredentials,
   saveConfig,
   saveCredentials,
 } from "./config.ts";
+import {
+  defaultKubeconfigPath,
+  discoverGcp,
+  discoverK8sContexts,
+  discoverProviderEnvVar,
+  probeJaegerUrl,
+  probePromUrl,
+} from "./discover.ts";
+import { isOAuthProvider, runOAuthLogin } from "./oauth.ts";
 
 /**
- * Interactive wizard that records LLM provider/model + datasource URLs into
- * config.yml and any required API keys into credentials.yml. Existing values
- * are presented as defaults so re-running just confirms.
+ * Interactive wizard. Auto-discovers gcloud projects, kubeconfig contexts,
+ * Prom/Jaeger reachability. Saves config (URLs, model, etc.) to
+ * $XDG_CONFIG_HOME and secrets (API keys) to $XDG_DATA_HOME with chmod 600.
  */
 export async function runOnboard(): Promise<void> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    console.log("opsremedy onboard\n");
-    const existing = loadConfig();
-    const existingCreds = loadCredentials();
+  registerBuiltInApiProviders();
 
-    const llm = await pickLlm(rl, existing, existingCreds);
-    const gcp = await pickGcp(rl, existing);
-    const prom = await pickProm(rl, existing);
-    const jaeger = await pickJaeger(rl, existing);
-    const k8s = await pickK8s(rl, existing);
-    const agent = await pickAgent(rl, existing);
+  console.log("opsremedy onboard");
+  console.log("Auto-discovering local tools...\n");
 
-    const newConfig: OpsremedyConfig = {
-      llm: { provider: llm.provider, model: llm.modelId },
-      ...(Object.keys(gcp).length > 0 && { gcp }),
-      prom: prom.fileShape,
-      jaeger: { url: jaeger.url },
-      ...(k8s.kubeconfig && { k8s: { kubeconfig: k8s.kubeconfig } }),
-      agent,
-    };
-    const cfgFile = saveConfig(newConfig);
-    console.log(`\nWrote config: ${cfgFile}`);
+  const [gcp] = await Promise.all([discoverGcp()]);
+  const k8sContexts = discoverK8sContexts();
+  const promReachable = await probePromUrl(DEFAULT_PROM_URL);
+  const jaegerReachable = await probeJaegerUrl(DEFAULT_JAEGER_URL);
 
-    const newCreds: OpsremedyCredentials = {
-      ...existingCreds,
-      ...(llm.apiKey && {
-        llm_keys: { ...(existingCreds.llm_keys ?? {}), [llm.provider]: llm.apiKey },
-      }),
-      ...(prom.bearerToken !== undefined && { prom_bearer_token: prom.bearerToken }),
-      ...(prom.password !== undefined && { prom_password: prom.password }),
-      ...(jaeger.token !== undefined && { jaeger_token: jaeger.token }),
-    };
-    if (Object.keys(newCreds).length > 0) {
-      const credsFile = saveCredentials(newCreds);
-      console.log(`Wrote credentials (chmod 600): ${credsFile}`);
-    }
+  printDiscoverySummary({ gcp, k8sContexts, promReachable, jaegerReachable });
 
-    console.log("\nDone. Try: opsremedy investigate -i alert.json");
-  } finally {
-    rl.close();
+  const existing = loadConfig();
+  const existingCreds = loadCredentials();
+
+  const llm = await sectionLlm(existing, existingCreds);
+  const gcpAnswers = await sectionGcp(existing, gcp);
+  const promAnswers = await sectionProm(existing, promReachable);
+  const jaegerAnswers = await sectionJaeger(existing, jaegerReachable);
+  const k8sAnswers = await sectionK8s(existing, k8sContexts);
+  const agentAnswers = await sectionAgent(existing);
+
+  const newConfig: OpsremedyConfig = {
+    llm: { provider: llm.provider, model: llm.modelId },
+    ...(Object.keys(gcpAnswers).length > 0 && { gcp: gcpAnswers }),
+    prom: promAnswers.fileShape,
+    jaeger: { url: jaegerAnswers.url },
+    k8s: { ...(k8sAnswers.context && { context: k8sAnswers.context }) },
+    agent: agentAnswers,
+  };
+  // Drop empty k8s block.
+  if (newConfig.k8s && Object.keys(newConfig.k8s).length === 0) delete newConfig.k8s;
+
+  const cfgFile = saveConfig(newConfig);
+  console.log(`\nWrote config: ${cfgFile}`);
+
+  const newCreds: OpsremedyCredentials = {
+    ...existingCreds,
+    ...(llm.apiKey && {
+      llm_keys: { ...(existingCreds.llm_keys ?? {}), [llm.provider]: llm.apiKey },
+    }),
+    ...(llm.oauth && {
+      llm_oauth: { ...(existingCreds.llm_oauth ?? {}), [llm.provider]: llm.oauth },
+    }),
+    ...(promAnswers.bearerToken !== undefined && { prom_bearer_token: promAnswers.bearerToken }),
+    ...(promAnswers.password !== undefined && { prom_password: promAnswers.password }),
+    ...(jaegerAnswers.token !== undefined && { jaeger_token: jaegerAnswers.token }),
+  };
+  if (Object.keys(newCreds).length > 0) {
+    const credsFile = saveCredentials(newCreds);
+    console.log(`Wrote credentials (chmod 600): ${credsFile}`);
   }
+
+  console.log("\nDone. Try: opsremedy investigate -i alert.json");
 }
 
-// ---------------- sections ----------------
+// ---------------- summary ----------------
 
-async function pickLlm(
-  rl: Interface,
-  cfg: OpsremedyConfig,
-  creds: OpsremedyCredentials,
-): Promise<{ provider: string; modelId: string; apiKey: string | undefined }> {
+function printDiscoverySummary(d: {
+  gcp: Awaited<ReturnType<typeof discoverGcp>>;
+  k8sContexts: ReturnType<typeof discoverK8sContexts>;
+  promReachable: boolean;
+  jaegerReachable: boolean;
+}): void {
+  const lines: string[] = [];
+  lines.push(
+    `  gcloud      : ${d.gcp.gcloudInstalled ? "found" : "not installed"}` +
+      (d.gcp.gcloudInstalled
+        ? ` (${d.gcp.projects.length} projects, active=${d.gcp.activeProject ?? "-"})`
+        : ""),
+  );
+  lines.push(`  GCP ADC     : ${d.gcp.adcAvailable ? "yes" : "no"}`);
+  lines.push(
+    `  kubeconfig  : ${d.k8sContexts.length} context(s)` +
+      (d.k8sContexts.length > 0 ? ` (current=${d.k8sContexts.find((c) => c.isCurrent)?.name ?? "-"})` : ""),
+  );
+  lines.push(
+    `  prometheus  : ${d.promReachable ? `reachable @ ${DEFAULT_PROM_URL}` : "not reachable on default"}`,
+  );
+  lines.push(
+    `  jaeger      : ${d.jaegerReachable ? `reachable @ ${DEFAULT_JAEGER_URL}` : "not reachable on default"}`,
+  );
+  console.log(lines.join("\n"));
+  console.log("");
+}
+
+// ---------------- LLM ----------------
+
+interface LlmAnswers {
+  provider: string;
+  modelId: string;
+  apiKey: string | undefined;
+  oauth: OAuthCredentialRecord | undefined;
+}
+
+async function sectionLlm(cfg: OpsremedyConfig, creds: OpsremedyCredentials): Promise<LlmAnswers> {
   console.log("== LLM ==");
   const providers = getProviders();
-  const defaultProvider =
-    cfg.llm?.provider && providers.includes(cfg.llm.provider as never) ? cfg.llm.provider : "anthropic";
+  const defaultProvider = providers.includes(cfg.llm?.provider as never)
+    ? (cfg.llm?.provider as string)
+    : "anthropic";
 
-  const provider = await pickFromList(rl, "Provider", providers, defaultProvider);
+  const provider = await select<string>({
+    message: "Provider",
+    choices: providers.map((p) => ({ name: p, value: p })),
+    default: defaultProvider,
+  });
 
   const models = getModels(provider as never);
-  if (models.length === 0) {
-    throw new Error(`Provider ${provider} has no models registered.`);
-  }
+  if (models.length === 0) throw new Error(`Provider ${provider} has no models registered.`);
   const modelIds = models.map((m) => m.id);
-  const defaultModel = cfg.llm?.model && modelIds.includes(cfg.llm.model) ? cfg.llm.model : modelIds[0]!;
-  const modelId = await pickFromList(rl, "Model", modelIds, defaultModel);
+  const defaultModel = modelIds.includes(cfg.llm?.model ?? "")
+    ? (cfg.llm?.model as string)
+    : preferredModelFor(provider, modelIds);
 
-  // Key handling — pick the first env var name pi-ai recognizes for this provider.
-  const envNames = findEnvKeys(provider) ?? [];
-  let apiKey: string | undefined;
-  if (envNames.length > 0) {
-    const existing = creds.llm_keys?.[provider] ?? envNames.map((n) => process.env[n]).find(Boolean);
-    const masked = existing ? maskKey(existing) : "(none)";
-    const promptText = `API key for ${provider} [${envNames[0]}] (current: ${masked}, blank to keep): `;
-    const entered = await ask(rl, promptText, "");
-    apiKey = entered ? entered : existing;
+  let modelId: string;
+  if (modelIds.length > 12) {
+    modelId = await search<string>({
+      message: `Model (type to filter, ${modelIds.length} total)`,
+      source: async (term) => {
+        const t = (term ?? "").toLowerCase();
+        const matches = modelIds.filter((id) => id.toLowerCase().includes(t));
+        return matches.map((id) => ({ name: id === defaultModel ? `${id} (recommended)` : id, value: id }));
+      },
+    });
   } else {
-    console.log(`(${provider} uses ambient credentials — no API key prompt)`);
+    modelId = await select<string>({
+      message: "Model",
+      choices: modelIds.map((id) => ({ name: id, value: id })),
+      default: defaultModel,
+    });
   }
 
-  return { provider, modelId, apiKey };
+  const auth = await pickAuth(provider, creds);
+  return { provider, modelId, apiKey: auth.apiKey, oauth: auth.oauth };
 }
 
-async function pickGcp(rl: Interface, cfg: OpsremedyConfig): Promise<NonNullable<OpsremedyConfig["gcp"]>> {
-  console.log("\n== GCP Cloud Logging ==");
-  const projectId = await ask(rl, "GCP project ID (blank to skip)", cfg.gcp?.project_id ?? "");
-  const credsPath = await ask(
-    rl,
-    "GOOGLE_APPLICATION_CREDENTIALS path (blank for ADC)",
-    cfg.gcp?.credentials_path ?? "",
-  );
-  const out: NonNullable<OpsremedyConfig["gcp"]> = {};
-  if (projectId) out.project_id = projectId;
-  if (credsPath) out.credentials_path = credsPath;
-  return out;
+interface AuthAnswer {
+  apiKey: string | undefined;
+  oauth: OAuthCredentialRecord | undefined;
 }
 
-async function pickProm(
-  rl: Interface,
+async function pickAuth(provider: string, creds: OpsremedyCredentials): Promise<AuthAnswer> {
+  const envNames = discoverProviderEnvVar(provider);
+  const supportsOAuth = isOAuthProvider(provider);
+  const existingKey = creds.llm_keys?.[provider];
+  const existingOAuth = creds.llm_oauth?.[provider];
+
+  // Provider has neither OAuth nor static key (e.g. amazon-bedrock, google-vertex).
+  if (!supportsOAuth && envNames.length === 0) {
+    console.log(`  (${provider} uses ambient credentials — no key/OAuth prompt)`);
+    return { apiKey: undefined, oauth: undefined };
+  }
+
+  // Build auth-method choices.
+  const choices: Array<{ name: string; value: "oauth" | "key" | "keep" | "skip" }> = [];
+  if (supportsOAuth) {
+    choices.push({
+      name: existingOAuth
+        ? `Subscription / OAuth (currently linked, expires ${formatExpiry(existingOAuth.expires)})`
+        : "Subscription / OAuth (e.g. Claude Pro/Max, ChatGPT Plus)",
+      value: "oauth",
+    });
+  }
+  if (envNames.length > 0) {
+    choices.push({
+      name: existingKey ? `API key (current: ${maskKey(existingKey)})` : `API key (${envNames.join(" or ")})`,
+      value: "key",
+    });
+  }
+  if (existingKey || existingOAuth) {
+    choices.push({ name: "Keep existing credentials", value: "keep" });
+  }
+  choices.push({ name: "Skip (set credentials later)", value: "skip" });
+
+  const choice = await select<"oauth" | "key" | "keep" | "skip">({
+    message: "Authentication",
+    choices,
+    default: existingOAuth ? "oauth" : existingKey ? "key" : choices[0]?.value,
+  });
+
+  if (choice === "keep") {
+    return { apiKey: undefined, oauth: undefined };
+  }
+  if (choice === "skip") {
+    console.log("  (no credential saved — investigations will fail until you set one)");
+    return { apiKey: undefined, oauth: undefined };
+  }
+  if (choice === "oauth") {
+    console.log(`\nStarting ${provider} OAuth login...`);
+    const tokens = await runOAuthLogin(provider);
+    console.log(`  ✓ Linked. Refresh handled automatically.`);
+    return { apiKey: undefined, oauth: tokens };
+  }
+  const entered = await password({
+    message: `API key for ${provider} (env: ${envNames.join(" or ")}${existingKey ? `, blank to keep ${maskKey(existingKey)}` : ""})`,
+    mask: "*",
+    validate: (v) => v.length === 0 || v.length >= 10 || "key looks too short",
+  });
+  return {
+    apiKey: entered || existingKey,
+    oauth: undefined,
+  };
+}
+
+function formatExpiry(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "unknown";
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return "unknown";
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+function preferredModelFor(provider: string, modelIds: string[]): string {
+  // Soft preference: pick a sonnet/4-5 if anthropic, gpt-4o or gpt-5 if openai, else first.
+  const preferences: Record<string, RegExp[]> = {
+    anthropic: [/claude-sonnet-4-5-202\d{5}/, /claude-sonnet-4-5/, /claude-sonnet/],
+    openai: [/^gpt-5/, /^gpt-4o/, /^gpt-4/],
+    google: [/^gemini-2/, /^gemini-1\.5/],
+  };
+  const list = preferences[provider] ?? [];
+  for (const re of list) {
+    const hit = modelIds.find((id) => re.test(id));
+    if (hit) return hit;
+  }
+  return modelIds[0] ?? "";
+}
+
+// ---------------- GCP ----------------
+
+async function sectionGcp(
   cfg: OpsremedyConfig,
+  gcp: Awaited<ReturnType<typeof discoverGcp>>,
+): Promise<NonNullable<OpsremedyConfig["gcp"]>> {
+  console.log("\n== GCP Cloud Logging ==");
+
+  if (!gcp.gcloudInstalled) {
+    console.log("  gcloud CLI not found.");
+    console.log("  Install: https://cloud.google.com/sdk/docs/install");
+    console.log("  Then: gcloud auth application-default login");
+    console.log("  Skipping GCP — opsremedy will fail on GCP tool calls until configured.\n");
+    return {};
+  }
+
+  if (!gcp.adcAvailable) {
+    console.log("  Application Default Credentials not found.");
+    console.log("  Run: gcloud auth application-default login");
+    console.log("  (continuing — you can re-run onboard after authing)\n");
+  }
+
+  const projectChoices = gcp.projects.map((p) => ({
+    name: p.projectId === gcp.activeProject ? `${p.projectId}  (active)` : `${p.projectId}  ${p.name}`,
+    value: p.projectId,
+    description: p.projectNumber ? `project number ${p.projectNumber}` : undefined,
+  }));
+  projectChoices.push({ name: "(skip GCP)", value: "", description: "Disable GCP integration" });
+
+  const defaultProject =
+    cfg.gcp?.project_id && gcp.projects.some((p) => p.projectId === cfg.gcp?.project_id)
+      ? cfg.gcp.project_id
+      : (gcp.activeProject ?? gcp.projects[0]?.projectId ?? "");
+
+  const projectId = await select<string>({
+    message: "GCP project",
+    choices: projectChoices,
+    default: defaultProject,
+  });
+
+  if (!projectId) return {};
+  return { project_id: projectId };
+}
+
+// ---------------- Prometheus ----------------
+
+async function sectionProm(
+  cfg: OpsremedyConfig,
+  reachable: boolean,
 ): Promise<{
   fileShape: NonNullable<OpsremedyConfig["prom"]>;
   bearerToken: string | undefined;
   password: string | undefined;
 }> {
   console.log("\n== Prometheus ==");
-  const url = await ask(rl, "Prometheus URL", cfg.prom?.url ?? DEFAULT_PROM_URL);
-  const auth = await pickFromList(rl, "Auth", ["none", "bearer", "basic"], "none");
+  const url = await input({
+    message: `Prometheus URL${reachable ? " (default reachable)" : ""}`,
+    default: cfg.prom?.url ?? DEFAULT_PROM_URL,
+  });
+
+  const auth = await select<"none" | "bearer" | "basic">({
+    message: "Auth",
+    choices: [
+      { name: "none", value: "none" },
+      { name: "bearer token", value: "bearer" },
+      { name: "basic auth", value: "basic" },
+    ],
+    default: "none",
+  });
 
   const fileShape: NonNullable<OpsremedyConfig["prom"]> = { url };
   let bearerToken: string | undefined;
-  let password: string | undefined;
+  let pw: string | undefined;
 
   if (auth === "bearer") {
-    bearerToken = (await ask(rl, "Bearer token", "")) || undefined;
+    const t = await password({ message: "Bearer token", mask: "*" });
+    bearerToken = t || undefined;
   } else if (auth === "basic") {
-    const user = await ask(rl, "Basic-auth user", cfg.prom?.user ?? "");
+    const user = await input({ message: "Basic-auth user", default: cfg.prom?.user ?? "" });
     if (user) fileShape.user = user;
-    password = (await ask(rl, "Basic-auth password", "")) || undefined;
+    const t = await password({ message: "Basic-auth password", mask: "*" });
+    pw = t || undefined;
   }
 
-  return { fileShape, bearerToken, password };
+  return { fileShape, bearerToken, password: pw };
 }
 
-async function pickJaeger(
-  rl: Interface,
+// ---------------- Jaeger ----------------
+
+async function sectionJaeger(
   cfg: OpsremedyConfig,
+  reachable: boolean,
 ): Promise<{ url: string; token: string | undefined }> {
   console.log("\n== Jaeger ==");
-  const url = await ask(rl, "Jaeger URL", cfg.jaeger?.url ?? DEFAULT_JAEGER_URL);
-  const tokenInput = await ask(rl, "Bearer token (blank for none)", "");
-  return { url, token: tokenInput || undefined };
+  const url = await input({
+    message: `Jaeger URL${reachable ? " (default reachable)" : ""}`,
+    default: cfg.jaeger?.url ?? DEFAULT_JAEGER_URL,
+  });
+  const t = await password({
+    message: "Bearer token (blank for none)",
+    mask: "*",
+    validate: () => true,
+  });
+  return { url, token: t || undefined };
 }
 
-async function pickK8s(rl: Interface, cfg: OpsremedyConfig): Promise<{ kubeconfig: string | undefined }> {
-  console.log("\n== Kubernetes ==");
-  const kc = await ask(
-    rl,
-    "Kubeconfig path (blank for default loaders)",
-    cfg.k8s?.kubeconfig ?? DEFAULT_KUBECONFIG,
-  );
-  if (kc && !existsSync(kc)) {
-    console.log(`  warning: ${kc} does not exist (will fail at first k8s tool call)`);
-  }
-  return { kubeconfig: kc || undefined };
-}
+// ---------------- Kubernetes ----------------
 
-async function pickAgent(
-  rl: Interface,
+async function sectionK8s(
   cfg: OpsremedyConfig,
-): Promise<NonNullable<OpsremedyConfig["agent"]>> {
-  console.log("\n== Agent ==");
-  const raw = await ask(rl, "Max tool calls per investigation", String(cfg.agent?.max_tool_calls ?? 20));
-  const n = Number(raw);
-  return { max_tool_calls: Number.isFinite(n) && n > 0 ? n : 20 };
-}
-
-// ---------------- prompt helpers ----------------
-
-async function ask(rl: Interface, label: string, defaultValue: string): Promise<string> {
-  const suffix = defaultValue ? ` [${defaultValue}]` : "";
-  const answer = (await rl.question(`${label}${suffix}: `)).trim();
-  return answer || defaultValue;
-}
-
-async function pickFromList(
-  rl: Interface,
-  label: string,
-  options: string[],
-  defaultValue: string,
-): Promise<string> {
-  console.log(`\n${label}:`);
-  const indexed = options.map((opt, i) => `  ${i + 1}. ${opt}${opt === defaultValue ? " (default)" : ""}`);
-  console.log(indexed.join("\n"));
-  const answer = (await rl.question(`Choose 1-${options.length} or name [${defaultValue}]: `)).trim();
-  if (!answer) return defaultValue;
-  const asNumber = Number(answer);
-  if (Number.isInteger(asNumber) && asNumber >= 1 && asNumber <= options.length) {
-    return options[asNumber - 1] as string;
+  contexts: ReturnType<typeof discoverK8sContexts>,
+): Promise<{ context: string | undefined }> {
+  console.log(`\n== Kubernetes (${defaultKubeconfigPath()}) ==`);
+  if (contexts.length === 0) {
+    console.log("  No contexts in default kubeconfig — install/configure kubectl, then re-run onboard.");
+    return { context: undefined };
   }
-  if (options.includes(answer)) return answer;
-  console.log(`  invalid choice, keeping default: ${defaultValue}`);
-  return defaultValue;
+
+  const choices = contexts.map((c) => ({
+    name: c.isCurrent ? `${c.name}  (current)` : c.name,
+    value: c.name,
+    description: c.cluster ? `cluster=${c.cluster}${c.namespace ? `, ns=${c.namespace}` : ""}` : undefined,
+  }));
+  const defaultCtx =
+    cfg.k8s?.context && contexts.some((c) => c.name === cfg.k8s?.context)
+      ? cfg.k8s.context
+      : (contexts.find((c) => c.isCurrent)?.name ?? contexts[0]?.name ?? "");
+
+  const context = await select<string>({
+    message: "Context",
+    choices,
+    default: defaultCtx,
+  });
+  return { context };
 }
+
+// ---------------- Agent ----------------
+
+async function sectionAgent(cfg: OpsremedyConfig): Promise<NonNullable<OpsremedyConfig["agent"]>> {
+  console.log("\n== Agent ==");
+  const raw = await input({
+    message: "Max tool calls per investigation",
+    default: String(cfg.agent?.max_tool_calls ?? 20),
+    validate: (v) => /^\d+$/.test(v) && Number(v) > 0,
+  });
+  return { max_tool_calls: Number(raw) };
+}
+
+// ---------------- helpers ----------------
 
 function maskKey(key: string): string {
   if (key.length <= 8) return "********";
