@@ -21,7 +21,8 @@ export class RealGcpLoggingClient implements GcpLoggingClient {
 
     const [entries] = await this.logging.getEntries({
       filter,
-      pageSize: q.max,
+      // `maxResults` caps total entries; do NOT also set `pageSize` — gax warns
+      // (AutopaginateTrueWarning) when both are set without autoPaginate=false.
       maxResults: q.max,
       orderBy: "timestamp desc",
       resourceNames: [`projects/${this.projectId}`],
