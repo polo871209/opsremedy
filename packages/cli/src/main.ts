@@ -18,8 +18,8 @@ class CliError extends Error {
 
 const USAGE = [
   "opsremedy onboard",
-  "opsremedy investigate (-i <alert.json> | --url <gcp-monitoring-url>) [--markdown <path>] [--trace <path>] [--max-tool-calls N]",
-  "opsremedy bench [--scenario <id>] [--json]",
+  "opsremedy investigate (-i <alert.json> | --url <gcp-monitoring-url>) [--markdown <path>] [--trace <path>] [--max-tool-calls N] [--quiet]",
+  "opsremedy bench [--scenario <id>] [--json] [--quiet]",
 ].join("\n");
 
 function parseArgs(argv: string[]): { cmd: string; opts: Record<string, string | boolean> } {
@@ -70,6 +70,7 @@ async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<v
 
   const maxToolCalls =
     typeof opts["max-tool-calls"] === "string" ? Number(opts["max-tool-calls"]) : undefined;
+  const quiet = opts.quiet === true;
 
   const { settings } = await bootstrapRealClients();
 
@@ -85,8 +86,12 @@ async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<v
         maxToolCalls !== undefined && !Number.isNaN(maxToolCalls)
           ? maxToolCalls
           : settings.agent.maxToolCalls,
+      displayThinking: !quiet,
       onEvent: (kind, detail) => {
-        console.error(`[${kind}]${detail ? ` ${JSON.stringify(detail)}` : ""}`);
+        // Thinking events are rendered by ThinkingStream itself; only persist them.
+        if (!kind.startsWith("thinking_")) {
+          console.error(`[${kind}]${detail ? ` ${JSON.stringify(detail)}` : ""}`);
+        }
         trace?.write(kind, detail);
       },
     });
@@ -113,6 +118,7 @@ async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<v
 async function cmdBench(opts: Record<string, string | boolean>): Promise<void> {
   const scenario = typeof opts.scenario === "string" ? opts.scenario : undefined;
   const asJson = opts.json === true;
+  const quiet = opts.quiet === true;
 
   const { settings } = await bootstrapAuth();
 
@@ -121,6 +127,7 @@ async function cmdBench(opts: Record<string, string | boolean>): Promise<void> {
     asJson,
     provider: settings.llm.provider,
     model: settings.llm.model,
+    displayThinking: !quiet && !asJson,
   });
   if (!result.allPassed) throw new CliError("bench failures", 1);
 }

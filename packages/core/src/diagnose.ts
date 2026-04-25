@@ -3,12 +3,17 @@ import { DIAGNOSE_SYSTEM_PROMPT, renderDiagnosisUserPrompt } from "./prompts.ts"
 import type { InvestigationContext, RCAReport } from "./types.ts";
 import { extractJsonObject, safeParse } from "./util/json.ts";
 import { resolveModel } from "./util/model.ts";
+import { ThinkingStream } from "./util/thinking.ts";
 import { sumUsage, type UsageTotal, ZERO_USAGE } from "./util/usage.ts";
 import { coerceRCAReport } from "./validate.ts";
 
 export interface DiagnoseOptions {
   provider: string;
   model: string;
+  /** Called for progress logging (thinking events). Optional. */
+  onEvent?: (kind: string, detail?: unknown) => void;
+  /** Render LLM thinking on stderr. Default true. */
+  displayThinking?: boolean;
 }
 
 export interface DiagnoseResult {
@@ -30,6 +35,17 @@ export async function diagnose(ctx: InvestigationContext, options: DiagnoseOptio
       thinkingLevel: "medium",
       tools: [],
     },
+  });
+
+  const thinking = new ThinkingStream({
+    phase: "diagnose",
+    display: options.displayThinking ?? true,
+    ...(options.onEvent && { onEvent: options.onEvent }),
+  });
+  agent.subscribe(async (event) => {
+    if (event.type === "message_update") {
+      thinking.handleAssistantEvent(event.assistantMessageEvent);
+    }
   });
 
   await agent.prompt(renderDiagnosisUserPrompt(ctx));

@@ -12,6 +12,7 @@
     "@mariozechner/pi-agent-core": "0.70.2",
     "@mariozechner/pi-ai": "0.70.2",
     "@opsremedy/clients": "workspace:*",
-    "@opsremedy/tools": "workspace:*"
+    "@opsremedy/tools": "workspace:*",
+    "picocolors": "1.1.1"
   }
 }

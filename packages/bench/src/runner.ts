@@ -18,6 +18,7 @@ export interface BenchOptions {
   scenariosDir?: string;
   provider?: string;
   model?: string;
+  displayThinking?: boolean;
 }
 
 export interface ScenarioRun {
@@ -37,12 +38,17 @@ function defaultScenariosDir(): string {
   return resolve(here, "..", "scenarios");
 }
 
-async function runOne(scenario: Scenario, provider: string, model: string): Promise<ScenarioRun> {
+async function runOne(
+  scenario: Scenario,
+  provider: string,
+  model: string,
+  displayThinking: boolean,
+): Promise<ScenarioRun> {
   setClients(loadScenarioClients(scenario.dir));
   const ctx = newContext(scenario.alert, scenario.answer.max_tool_calls);
 
-  const gatherUsage = await gatherEvidence(ctx, { provider, model });
-  const { report: raw, usage: diagnoseUsage } = await diagnose(ctx, { provider, model });
+  const gatherUsage = await gatherEvidence(ctx, { provider, model, displayThinking });
+  const { report: raw, usage: diagnoseUsage } = await diagnose(ctx, { provider, model, displayThinking });
 
   const validated = validateAndFinalize(raw, ctx);
   const report: RCAReport = { ...validated, usage: addUsage(gatherUsage, diagnoseUsage) };
@@ -56,6 +62,7 @@ export async function runBench(options: BenchOptions = {}): Promise<BenchResult>
   const scenariosDir = options.scenariosDir ?? defaultScenariosDir();
   const provider = options.provider ?? Bun.env.OPSREMEDY_LLM_PROVIDER ?? "anthropic";
   const model = options.model ?? Bun.env.OPSREMEDY_LLM_MODEL ?? "claude-sonnet-4-5-20250929";
+  const displayThinking = options.displayThinking ?? !options.asJson;
 
   let scenarios: Scenario[];
   if (options.scenario) {
@@ -72,7 +79,7 @@ export async function runBench(options: BenchOptions = {}): Promise<BenchResult>
 
   const runs: ScenarioRun[] = [];
   for (const scenario of scenarios) {
-    const run = await runOne(scenario, provider, model);
+    const run = await runOne(scenario, provider, model, displayThinking);
     runs.push(run);
     if (options.asJson) continue;
     printHuman(run);

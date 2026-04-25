@@ -9,6 +9,8 @@ export interface RunOptions {
   model?: string;
   max_tool_calls?: number;
   onEvent?: (kind: string, detail?: unknown) => void;
+  /** Render LLM thinking on stderr. Default true. */
+  displayThinking?: boolean;
 }
 
 export function newContext(alert: Alert, maxToolCalls = 20): InvestigationContext {
@@ -30,12 +32,24 @@ export async function runInvestigation(alert: Alert, options: RunOptions = {}): 
   const ctx = newContext(alert, maxToolCalls);
   options.onEvent?.("investigation_start", { alert_id: alert.alert_id });
 
+  const displayThinking = options.displayThinking ?? true;
+
   options.onEvent?.("gather_start");
-  const gatherUsage = await gatherEvidence(ctx, { provider, model, onEvent: options.onEvent });
+  const gatherUsage = await gatherEvidence(ctx, {
+    provider,
+    model,
+    displayThinking,
+    ...(options.onEvent && { onEvent: options.onEvent }),
+  });
   options.onEvent?.("gather_usage", gatherUsage);
 
   options.onEvent?.("diagnose_start");
-  const { report: rawReport, usage: diagnoseUsage } = await diagnose(ctx, { provider, model });
+  const { report: rawReport, usage: diagnoseUsage } = await diagnose(ctx, {
+    provider,
+    model,
+    displayThinking,
+    ...(options.onEvent && { onEvent: options.onEvent }),
+  });
   options.onEvent?.("diagnose_usage", diagnoseUsage);
 
   options.onEvent?.("validate_start");
