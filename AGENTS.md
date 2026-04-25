@@ -2,10 +2,9 @@
 
 SRE investigation agent. Bun + TypeScript monorepo. Two-phase LLM agent (gather → diagnose) over GCP Logging, Prometheus, Jaeger, Kubernetes.
 
-## Commands
+## Dev commands
 
 ```
-bun install
 bun test                          # bun:test, 5/5 in packages/core
 bun run check                     # biome lint+format (must be clean before commit)
 bunx biome check --write .        # apply safe fixes (incl. import order)
@@ -16,12 +15,9 @@ bunx biome check --write .        # apply safe fixes (incl. import order)
 for p in core clients tools bench cli; do bunx tsc --noEmit -p packages/$p/tsconfig.json; done
 ```
 
-CLI (no `bin` symlink unless `bun link` ran):
+Run CLI without `bun link`:
 ```
-bun packages/cli/src/main.ts onboard
-bun packages/cli/src/main.ts investigate -i <alert.json>
-bun packages/cli/src/main.ts investigate --url '<gcp-monitoring-url>'
-bun run bench -- --scenario 001-oom-kill
+bun packages/cli/src/main.ts <command>
 ```
 
 `bench` uses fixture clients but still hits the real LLM — needs working OAuth/key.
