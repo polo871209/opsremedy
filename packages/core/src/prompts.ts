@@ -59,11 +59,22 @@ Return ONE JSON object — nothing else, no code fences, no commentary — match
 RULES
 - Every validated_claim MUST cite evidence keys you actually see in the input.
 - If evidence is insufficient, set category to "unknown" and confidence low.
-- If metrics and events show the system is healthy (alert fired on a false positive,
-  or the issue has already recovered), set category to "healthy" and explain in the
-  root_cause that the system has recovered or the alert was a transient false positive.
+- CATEGORY = CURRENT STATE, NOT HISTORICAL EVENT. Pick the category describing the
+  system RIGHT NOW relative to the alert's fired_at, not what triggered the alert
+  hours ago.
+  * If the failure already recovered (pod is Ready, metrics normalized, the fix
+    was applied) → category MUST be "healthy", regardless of how dramatic the
+    earlier event was. Do NOT pick "resource_exhaustion" / "deployment" / etc.
+    just because that's what *caused* the recovered incident.
+  * Compare evidence timestamps to alert.fired_at. Events / OOMKills / errors that
+    happened > 30 min before fired_at AND have no recurrence are STALE — they
+    explain history, not current state.
+  * "healthy" requires you to write the words "recovered" or "resolved" in
+    root_cause and cite the recovery evidence (Ready=True, restart count stable,
+    metric back to baseline, mitigation event like limit raised / rollback).
 - Remediation entries MUST be dry-run / suggestion only. Prefer kubectl commands or yaml
-  patches; never imply the agent should execute them.
+  patches; never imply the agent should execute them. For "healthy" category, remediation
+  should be empty or contain only preventive hardening suggestions.
 - Output raw JSON only — no markdown fences, no leading text.
 `;
 

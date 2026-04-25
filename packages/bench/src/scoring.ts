@@ -39,12 +39,14 @@ export function scoreScenario(
 
   const category_ok = report.root_cause_category === answer.expected_category;
 
-  const missing_keywords = (answer.required_keywords ?? []).filter((k) => !text.includes(k.toLowerCase()));
+  const missing_keywords = (answer.required_keywords ?? [])
+    .map((k) => String(k))
+    .filter((k) => !text.includes(k.toLowerCase()));
   const keywords_ok = missing_keywords.length === 0;
 
-  const hit_forbidden_keywords = (answer.forbidden_keywords ?? []).filter((k) =>
-    text.includes(k.toLowerCase()),
-  );
+  const hit_forbidden_keywords = (answer.forbidden_keywords ?? [])
+    .map((k) => String(k))
+    .filter((k) => text.includes(k.toLowerCase()));
   const forbidden_categories = answer.forbidden_categories ?? [];
   const not_forbidden =
     !forbidden_categories.includes(report.root_cause_category) && hit_forbidden_keywords.length === 0;

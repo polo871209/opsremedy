@@ -24,11 +24,12 @@ export interface BootstrapResult {
 }
 
 /**
- * Load config + credentials, refresh OAuth tokens if needed, fail-fast on
- * missing required fields, push secrets into process.env so pi-ai's built-in
- * key resolution finds them, then wire the real clients into the registry.
+ * Auth-only bootstrap: register pi-ai providers, load config/credentials,
+ * refresh OAuth, and push secrets into process.env. Does NOT wire data-source
+ * clients. Bench uses this; investigate uses bootstrapRealClients which
+ * additionally wires real GCP/Prom/Jaeger/K8s clients.
  */
-export async function bootstrapRealClients(): Promise<BootstrapResult> {
+export async function bootstrapAuth(): Promise<BootstrapResult> {
   registerBuiltInApiProviders();
 
   const cfg = loadConfig();
@@ -45,6 +46,17 @@ export async function bootstrapRealClients(): Promise<BootstrapResult> {
   }
   applyCredentialsToEnv(creds, envKeyMap);
   pushOAuthTokensToEnv(creds);
+
+  return { settings };
+}
+
+/**
+ * Load config + credentials, refresh OAuth tokens if needed, fail-fast on
+ * missing required fields, push secrets into process.env so pi-ai's built-in
+ * key resolution finds them, then wire the real clients into the registry.
+ */
+export async function bootstrapRealClients(): Promise<BootstrapResult> {
+  const { settings } = await bootstrapAuth();
 
   // Optional ADC pointer.
   if (settings.gcp.credentialsPath && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {

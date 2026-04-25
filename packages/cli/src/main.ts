@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { runBench } from "@opsremedy/bench";
 import { type Alert, runInvestigation, TraceWriter } from "@opsremedy/core";
-import { bootstrapRealClients } from "./bootstrap.ts";
+import { bootstrapAuth, bootstrapRealClients } from "./bootstrap.ts";
 import { fetchAlertFromGcp, parseGcpAlertUrl } from "./gcp-alert.ts";
 import { runOnboard } from "./onboard.ts";
 
@@ -121,9 +121,20 @@ async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<v
 async function cmdBench(opts: Record<string, string | boolean>): Promise<void> {
   const scenario = typeof opts.scenario === "string" ? opts.scenario : undefined;
   const asJson = opts.json === true;
+
+  let settings: Awaited<ReturnType<typeof bootstrapAuth>>["settings"];
+  try {
+    settings = (await bootstrapAuth()).settings;
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(2);
+  }
+
   const result = await runBench({
     ...(scenario !== undefined && { scenario }),
     asJson,
+    provider: settings.llm.provider,
+    model: settings.llm.model,
   });
   process.exit(result.allPassed ? 0 : 1);
 }
