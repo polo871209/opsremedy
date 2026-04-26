@@ -1,4 +1,12 @@
-# OpsRemedy
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset=".github/assets/logo-light.png">
+    <img src=".github/assets/logo-light.png" alt="OpsRemedy" width="320">
+  </picture>
+</p>
+
+<h1 align="center">OpsRemedy</h1>
 
 > **Personal project — limited support.** Built for my own workflow. Issues and PRs welcome but I make no commitments to respond, fix, or maintain.
 
