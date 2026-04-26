@@ -1,0 +1,17 @@
+scenario_id: 007-ambiguous-needs-reroute
+difficulty: 4
+expected_category: dependency
+required_keywords:
+  - postgres
+required_evidence_sources:
+  - prom_alert_rules
+  - k8s_events
+forbidden_categories:
+  - healthy
+forbidden_keywords:
+  - all signals nominal
+optimal_trajectory:
+  - get_prom_alert_rules
+  - k8s_get_events
+  - k8s_describe
+max_tool_calls: 14

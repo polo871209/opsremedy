@@ -1,0 +1,18 @@
+{
+  "traces": {
+    "orders-api": [
+      {
+        "traceId": "trace-7771",
+        "rootService": "orders-api",
+        "rootOperation": "POST /orders",
+        "durationMs": 5023,
+        "hasError": true,
+        "spanCount": 6,
+        "noteworthySpan": "postgres.GetOrder timed out after 5000ms"
+      }
+    ]
+  },
+  "deps": {
+    "orders-api": [{ "parent": "orders-api", "child": "orders-postgres", "callCount": 412 }]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "alert_id": "synthetic-degraded-007",
+  "alert_name": "ServiceDegraded",
+  "severity": "warning",
+  "fired_at": "2026-04-25T11:45:00Z",
+  "labels": {
+    "cluster": "prod",
+    "namespace": "orders",
+    "service": "orders-api"
+  },
+  "annotations": {
+    "summary": "orders-api error rate elevated",
+    "runbook_url": "https://runbooks.example.com/degraded"
+  },
+  "summary": "orders-api error rate elevated; root cause unclear from initial signals."
+}

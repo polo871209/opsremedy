@@ -1,0 +1,20 @@
+scenario_id: 006-heartbeat-info
+difficulty: 1
+expected_category: healthy
+required_keywords:
+  - nominal
+forbidden_categories:
+  - resource_exhaustion
+  - configuration
+  - dependency
+  - deployment
+  - infrastructure
+  - data_quality
+  - unknown
+forbidden_keywords:
+  - OOMKilled
+  - CrashLoopBackOff
+  - failing
+required_evidence_sources: []
+optimal_trajectory: []
+max_tool_calls: 8
