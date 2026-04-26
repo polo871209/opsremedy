@@ -1,4 +1,4 @@
-import { findEnvKeys, registerBuiltInApiProviders } from "@mariozechner/pi-ai";
+import { registerBuiltInApiProviders } from "@mariozechner/pi-ai";
 import {
   RealGcpLoggingClient,
   RealJaegerClient,
@@ -17,6 +17,7 @@ import {
   resolveSettings,
   saveCredentials,
 } from "./config.ts";
+import { discoverProviderEnvVar } from "./discover.ts";
 import { ensureFreshOAuthToken } from "./oauth.ts";
 
 export interface BootstrapResult {
@@ -39,10 +40,13 @@ export async function bootstrapAuth(): Promise<BootstrapResult> {
   creds = await refreshOAuthTokens(creds, settings.llm.provider);
 
   // Make LLM keys (static and OAuth) visible to pi-ai's getEnvApiKey().
+  // `findEnvKeys` only reports vars that are *already set*, so we use the
+  // probe-set discovery helper to learn the canonical name for each provider
+  // even when the user has only stored the key in credentials.yml.
   const envKeyMap = new Map<string, string[]>();
   for (const provider of Object.keys(creds.llm_keys ?? {})) {
-    const names = findEnvKeys(provider);
-    if (names && names.length > 0) envKeyMap.set(provider, names);
+    const names = discoverProviderEnvVar(provider);
+    if (names.length > 0) envKeyMap.set(provider, names);
   }
   applyCredentialsToEnv(creds, envKeyMap);
   pushOAuthTokensToEnv(creds);

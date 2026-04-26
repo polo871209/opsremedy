@@ -1,25 +1,16 @@
 /**
  * Roll up token + cost usage from a sequence of pi-ai messages.
  * Only assistant messages carry `usage`; others are ignored.
+ *
+ * `UsageTotal` and `ZERO_USAGE` re-export the canonical types from
+ * `../types.ts`. Kept here as named aliases because most internal call
+ * sites refer to them via this util.
  */
 
-export interface UsageTotal {
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens: number;
-  cache_write_tokens: number;
-  total_tokens: number;
-  cost_usd: number;
-}
+import { type UsageSummary, ZERO_USAGE } from "../types.ts";
 
-export const ZERO_USAGE: UsageTotal = {
-  input_tokens: 0,
-  output_tokens: 0,
-  cache_read_tokens: 0,
-  cache_write_tokens: 0,
-  total_tokens: 0,
-  cost_usd: 0,
-};
+export type UsageTotal = UsageSummary;
+export { ZERO_USAGE };
 
 interface AssistantUsage {
   input?: number;

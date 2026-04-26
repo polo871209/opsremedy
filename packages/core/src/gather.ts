@@ -6,6 +6,22 @@ import { resolveModel } from "./util/model.ts";
 import { ThinkingStream } from "./util/thinking.ts";
 import { sumUsage, type UsageTotal } from "./util/usage.ts";
 
+/**
+ * Pre-tool-call budget gate. Returns the pi-mono `block` shape when no slot
+ * is available, otherwise reserves a slot by bumping `inflight` and returns
+ * undefined. The companion decrement lives in `tools/define.ts`.
+ *
+ * Exported so tests can exercise the parallel-execution edge case where N
+ * concurrent calls would otherwise all squeeze past a single remaining slot.
+ */
+export function reserveToolCallSlot(ctx: InvestigationContext): { block: true; reason: string } | undefined {
+  if (ctx.loop_count + ctx.inflight >= ctx.max_tool_calls) {
+    return { block: true, reason: "Exceeded tool call budget" };
+  }
+  ctx.inflight++;
+  return undefined;
+}
+
 export interface GatherOptions {
   provider: string;
   model: string;
@@ -32,11 +48,7 @@ export async function gatherEvidence(ctx: InvestigationContext, options: GatherO
       tools,
     },
     toolExecution: "parallel",
-    beforeToolCall: async () => {
-      if (ctx.loop_count >= ctx.max_tool_calls) {
-        return { block: true, reason: "Exceeded tool call budget" };
-      }
-    },
+    beforeToolCall: async () => reserveToolCallSlot(ctx),
   });
 
   const thinking = new ThinkingStream({

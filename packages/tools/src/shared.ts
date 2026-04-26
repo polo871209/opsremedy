@@ -1,4 +1,4 @@
-import type { InvestigationContext, ToolCallAudit } from "@opsremedy/core/types";
+import type { Evidence, InvestigationContext, ToolCallAudit } from "@opsremedy/core/types";
 
 /** Parse the alert's `fired_at` into a Date; fall back to `Date.now()`. */
 export function alertTime(ctx: InvestigationContext): Date {
@@ -35,4 +35,37 @@ export function recordToolCall(
 export function truncate(text: string, maxLen = 280): string {
   if (text.length <= maxLen) return text;
   return `${text.slice(0, maxLen - 3)}...`;
+}
+
+/**
+ * Append items to an array-shaped evidence bucket, creating the array on
+ * first use. Replaces the boilerplate
+ *   const existing = ctx.evidence.foo ?? [];
+ *   ctx.evidence.foo = [...existing, ...items];
+ */
+export function appendEvidence<K extends keyof Evidence>(
+  ctx: InvestigationContext,
+  key: K,
+  items: Evidence[K] extends (infer U)[] | undefined ? U[] : never,
+): void {
+  const current = (ctx.evidence[key] as unknown as unknown[] | undefined) ?? [];
+  (ctx.evidence[key] as unknown) = [...current, ...items];
+}
+
+/**
+ * Set a sub-key on a record-shaped evidence bucket, creating the record on
+ * first use. Replaces the boilerplate
+ *   const store = ctx.evidence.foo ?? {};
+ *   store[subKey] = value;
+ *   ctx.evidence.foo = store;
+ */
+export function setEvidenceMapEntry<K extends keyof Evidence>(
+  ctx: InvestigationContext,
+  key: K,
+  subKey: string,
+  value: unknown,
+): void {
+  const current = (ctx.evidence[key] as Record<string, unknown> | undefined) ?? {};
+  current[subKey] = value;
+  (ctx.evidence[key] as unknown) = current;
 }

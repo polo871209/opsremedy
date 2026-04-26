@@ -1,14 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadScenarioClients, setClients } from "@opsremedy/clients";
-import {
-  addUsage,
-  diagnose,
-  gatherEvidence,
-  newContext,
-  type RCAReport,
-  validateAndFinalize,
-} from "@opsremedy/core";
+import { loadScenarioClients, resetClients, setClients } from "@opsremedy/clients";
+import { executePipeline, newContext, type RCAReport } from "@opsremedy/core";
 import { listScenarios, loadScenario, type Scenario } from "./load.ts";
 import { type ScenarioScore, scoreScenario } from "./scoring.ts";
 
@@ -44,14 +37,14 @@ async function runOne(
   model: string,
   displayThinking: boolean,
 ): Promise<ScenarioRun> {
+  // Reset first so a previous scenario's fixtures can't leak into this run
+  // when the new one omits a client (registry uses Object.assign-style merge).
+  resetClients();
   setClients(loadScenarioClients(scenario.dir));
+
   const ctx = newContext(scenario.alert, scenario.answer.max_tool_calls);
+  const report = await executePipeline(ctx, { provider, model, displayThinking });
 
-  const gatherUsage = await gatherEvidence(ctx, { provider, model, displayThinking });
-  const { report: raw, usage: diagnoseUsage } = await diagnose(ctx, { provider, model, displayThinking });
-
-  const validated = validateAndFinalize(raw, ctx);
-  const report: RCAReport = { ...validated, usage: addUsage(gatherUsage, diagnoseUsage) };
   const toolsCalled = ctx.tools_called.map((t) => t.name);
   const score = scoreScenario(report, ctx.evidence, toolsCalled, scenario.answer);
 

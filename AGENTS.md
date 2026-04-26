@@ -26,7 +26,7 @@ bun packages/cli/src/main.ts <command>
 
 Five workspaces:
 
-- **core** — `runInvestigation()` → `gatherEvidence()` (pi-mono `Agent` w/ 11 tools, parallel exec, hard tool-call budget) → `diagnose()` (no tools, strict JSON, 1 retry) → `validateAndFinalize()` (code-level claim check, recomputes confidence). Pi-mono = `@mariozechner/pi-agent-core` 0.70.2.
+- **core** — `runInvestigation()` → `executePipeline()` (shared by bench) → `gatherEvidence()` (pi-mono `Agent` w/ 11 tools, parallel exec, hard tool-call budget enforced via `reserveToolCallSlot` inflight counter) → `diagnose()` (no tools, strict JSON, 1 retry) → `validateAndFinalize()` (code-level claim check, recomputes confidence). Pi-mono = `@mariozechner/pi-agent-core` 0.70.2.
 - **clients** — `Real*` + `Fixture*` impls per source. Module-level registry (`getClients`/`setClients`/`resetClients`). CLI wires real; bench swaps fixtures per scenario.
 - **tools** — 11 `AgentTool` factories. Use `defineTool` helper or TypeBox params collapse to `unknown`. Each mutates `ctx.evidence.<key>` + records audit + returns short summary; full payload only seen by diagnoser.
 - **cli** — onboard wizard + investigate + GCP URL fetch.
@@ -45,7 +45,7 @@ Resolution: **env > files > defaults**. `bootstrapRealClients()` is async (refre
 ## Gotchas
 
 - **Pi-ai needs `registerBuiltInApiProviders()`** before `getModels`/`findEnvKeys`. Already called in `bootstrap.ts` and `runOnboard()`.
-- **`findEnvKeys(provider)` only reports already-set vars.** To learn the canonical name, use the probe-set trick in `discover.ts:discoverProviderEnvVar`.
+- **`findEnvKeys(provider)` only reports already-set vars** — useless for injecting a key that the user only stored in `credentials.yml`. Always use `discoverProviderEnvVar` from `discover.ts`; that's what `bootstrap.ts:bootstrapAuth` does now.
 - **OAuth lives at `@mariozechner/pi-ai/oauth`** subpath (not main barrel). Token push to env is manual: `bootstrap.ts:oauthEnvVarFor` — only anthropic + github-copilot use process env.
 - **GCP Monitoring REST returns camelCase** (`openTime`, `closeTime`) despite docs. `gcp-alert.ts` accepts both — keep that.
 - **K8s client v1.x uses ObjectParam style** (`@kubernetes/client-node` 1.4.0): `{namespace, fieldSelector}`, not positional. Old web examples are wrong.
@@ -56,6 +56,10 @@ Resolution: **env > files > defaults**. `bootstrapRealClients()` is async (refre
 - **`RealK8sClient.setCurrentContext` only fires when `opts.context` defined** — let kubeconfig's current-context win otherwise.
 - **GCP logs `getEntries`**: never set both `pageSize` and `maxResults` (gax `AutopaginateTrueWarning`). Use `maxResults` only.
 - **GCP `getEntries` ignores AbortSignal** — `q.signal` is `void`d; investigation can't be cancelled mid-log-fetch.
+- **`ZERO_USAGE` + `UsageSummary` live in `core/src/types.ts`** — `util/usage.ts` re-exports them as `UsageTotal` for back-compat with pi-mono message rollups. Don't redefine.
+- **Bench reuses `executePipeline` from core** — runner doesn't reimplement gather→diagnose→validate. Bench keeps its own `ctx` reference for scoring (`evidence`, `tools_called`).
+- **Bench calls `resetClients()` before `setClients()` per scenario** — registry merges via `Object.assign`, so omitting a fixture would leak the previous scenario's clients.
+- **Tool-call budget is parallel-safe via inflight counter** — `gather.ts:reserveToolCallSlot` bumps `ctx.inflight` before each call; `tools/define.ts` decrements in `finally`. A parallel batch can't exceed `max_tool_calls` even on the last slot.
 
 ## Style
 

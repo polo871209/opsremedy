@@ -3,7 +3,7 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { alertTime } from "./shared.ts";
+import { alertTime, setEvidenceMapEntry } from "./shared.ts";
 
 export function makePromInstantTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -23,9 +23,7 @@ export function makePromInstantTool(ctx: InvestigationContext): AgentTool {
         time: alertTime(ctx),
         ...(signal !== undefined && { signal }),
       });
-      const store = ctx.evidence.prom_instant ?? {};
-      store[params.query] = result;
-      ctx.evidence.prom_instant = store;
+      setEvidenceMapEntry(ctx, "prom_instant", params.query, result);
 
       const summary =
         result.series.length === 0
@@ -63,9 +61,7 @@ export function makePromRangeTool(ctx: InvestigationContext): AgentTool {
         step: params.step_seconds ?? 30,
         ...(signal !== undefined && { signal }),
       });
-      const store = ctx.evidence.prom_series ?? {};
-      store[params.query] = result;
-      ctx.evidence.prom_series = store;
+      setEvidenceMapEntry(ctx, "prom_series", params.query, result);
 
       const summary =
         result.series.length === 0

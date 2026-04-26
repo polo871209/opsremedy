@@ -1,8 +1,5 @@
-import { diagnose } from "./diagnose.ts";
-import { gatherEvidence } from "./gather.ts";
+import { executePipeline } from "./pipeline.ts";
 import type { Alert, InvestigationContext, RCAReport } from "./types.ts";
-import { addUsage } from "./util/usage.ts";
-import { validateAndFinalize } from "./validate.ts";
 
 export interface RunOptions {
   provider?: string;
@@ -19,11 +16,19 @@ export function newContext(alert: Alert, maxToolCalls = 20): InvestigationContex
     evidence: {},
     tools_called: [],
     loop_count: 0,
+    inflight: 0,
     max_tool_calls: maxToolCalls,
     started_at: Date.now(),
   };
 }
 
+/**
+ * End-to-end entry point used by the CLI. Constructs a context, runs the
+ * gather→diagnose→validate pipeline, and reports lifecycle events.
+ *
+ * Bench reuses `executePipeline` directly so it can keep the populated
+ * context for scenario scoring.
+ */
 export async function runInvestigation(alert: Alert, options: RunOptions = {}): Promise<RCAReport> {
   const provider = options.provider ?? Bun.env.OPSREMEDY_LLM_PROVIDER ?? "anthropic";
   const model = options.model ?? Bun.env.OPSREMEDY_LLM_MODEL ?? "claude-sonnet-4-5-20250929";
@@ -32,29 +37,12 @@ export async function runInvestigation(alert: Alert, options: RunOptions = {}): 
   const ctx = newContext(alert, maxToolCalls);
   options.onEvent?.("investigation_start", { alert_id: alert.alert_id });
 
-  const displayThinking = options.displayThinking ?? true;
-
-  options.onEvent?.("gather_start");
-  const gatherUsage = await gatherEvidence(ctx, {
+  const final = await executePipeline(ctx, {
     provider,
     model,
-    displayThinking,
+    displayThinking: options.displayThinking ?? true,
     ...(options.onEvent && { onEvent: options.onEvent }),
   });
-  options.onEvent?.("gather_usage", gatherUsage);
-
-  options.onEvent?.("diagnose_start");
-  const { report: rawReport, usage: diagnoseUsage } = await diagnose(ctx, {
-    provider,
-    model,
-    displayThinking,
-    ...(options.onEvent && { onEvent: options.onEvent }),
-  });
-  options.onEvent?.("diagnose_usage", diagnoseUsage);
-
-  options.onEvent?.("validate_start");
-  const validated = validateAndFinalize(rawReport, ctx);
-  const final: RCAReport = { ...validated, usage: addUsage(gatherUsage, diagnoseUsage) };
 
   options.onEvent?.("investigation_end", {
     category: final.root_cause_category,

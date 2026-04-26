@@ -3,7 +3,7 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { truncate, windowAroundAlert } from "./shared.ts";
+import { appendEvidence, truncate, windowAroundAlert } from "./shared.ts";
 
 export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -38,8 +38,9 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
         ...(signal !== undefined && { signal }),
       });
 
-      const existing = ctx.evidence.gcp_logs ?? [];
-      ctx.evidence.gcp_logs = [...existing, ...entries];
+      appendEvidence(ctx, "gcp_logs", entries);
+      // Re-derive the error-only view from the full set so it stays in sync
+      // across multiple log queries within the same investigation.
       ctx.evidence.gcp_error_logs = (ctx.evidence.gcp_logs ?? []).filter((e) =>
         ["ERROR", "CRITICAL", "ALERT", "EMERGENCY"].includes(e.severity),
       );

@@ -53,6 +53,10 @@ export function defineTool<TParams extends TSchema, TDetails = unknown>(def: {
         error: (err as Error).message,
       });
       throw err;
+    } finally {
+      // Pair with the bump in gather.ts:beforeToolCall. Decrement even on
+      // throw so a failing tool doesn't leak budget against the inflight cap.
+      if (def.ctx.inflight > 0) def.ctx.inflight--;
     }
   };
 

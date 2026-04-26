@@ -39,28 +39,45 @@ const USAGE = [
   "opsremedy bench [--scenario <id>] [--json] [--quiet]",
 ].join("\n");
 
+/** Long-option flags that always take a value (`--name VALUE`). */
+const VALUE_FLAGS = new Set(["url", "markdown", "trace", "max-tool-calls", "scenario"]);
+/** Long-option flags that never take a value (`--name`). */
+const BOOL_FLAGS = new Set(["json", "quiet"]);
+
 function parseArgs(argv: string[]): { cmd: string; opts: Record<string, string | boolean> } {
   const [, , cmd, ...rest] = argv;
   if (!cmd) throw new CliError(USAGE);
   const opts: Record<string, string | boolean> = {};
+
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (!arg) continue;
+
     if (arg === "-i") {
       const value = rest[i + 1];
-      if (!value) throw new CliError(USAGE);
+      if (!value) throw new CliError(`-i requires a path argument\n${USAGE}`);
       opts.input = value;
       i++;
-    } else if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      const next = rest[i + 1];
-      if (!next || next.startsWith("-")) {
-        opts[key] = true;
-      } else {
-        opts[key] = next;
-        i++;
-      }
+      continue;
     }
+
+    if (!arg.startsWith("--")) {
+      throw new CliError(`Unexpected argument: ${arg}\n${USAGE}`);
+    }
+    const key = arg.slice(2);
+
+    if (BOOL_FLAGS.has(key)) {
+      opts[key] = true;
+      continue;
+    }
+    if (VALUE_FLAGS.has(key)) {
+      const value = rest[i + 1];
+      if (value === undefined) throw new CliError(`--${key} requires a value\n${USAGE}`);
+      opts[key] = value;
+      i++;
+      continue;
+    }
+    throw new CliError(`Unknown flag: --${key}\n${USAGE}`);
   }
   return { cmd, opts };
 }

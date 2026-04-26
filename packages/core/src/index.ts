@@ -1,5 +1,6 @@
 export { type DiagnoseResult, diagnose } from "./diagnose.ts";
-export { gatherEvidence } from "./gather.ts";
+export { gatherEvidence, reserveToolCallSlot } from "./gather.ts";
+export { executePipeline, type PipelineOptions } from "./pipeline.ts";
 export { newContext, type RunOptions, runInvestigation } from "./run.ts";
 export * from "./types.ts";
 export { listModels, listProviders, resolveModel } from "./util/model.ts";

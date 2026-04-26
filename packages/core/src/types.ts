@@ -133,8 +133,14 @@ export interface InvestigationContext {
   alert: Alert;
   evidence: Evidence;
   tools_called: ToolCallAudit[];
-  /** Total tool call count; compared against `max_tool_calls`. */
+  /** Completed tool calls; compared against `max_tool_calls`. */
   loop_count: number;
+  /**
+   * Tool calls dispatched but not yet finished. Bumped synchronously in
+   * `beforeToolCall`, decremented when `recordToolCall` runs. Lets the
+   * budget gate account for parallel batches.
+   */
+  inflight: number;
   max_tool_calls: number;
   started_at: number;
 }
@@ -156,6 +162,11 @@ export interface ValidatedClaim {
   evidence_sources: string[];
 }
 
+/**
+ * Aggregate token + cost usage for an investigation. Identical shape lives
+ * in `util/usage.ts` as `UsageTotal` (kept as an alias for back-compat with
+ * pi-mono message rollups). One canonical definition; one zero value.
+ */
 export interface UsageSummary {
   input_tokens: number;
   output_tokens: number;
@@ -164,6 +175,15 @@ export interface UsageSummary {
   total_tokens: number;
   cost_usd: number;
 }
+
+export const ZERO_USAGE: UsageSummary = {
+  input_tokens: 0,
+  output_tokens: 0,
+  cache_read_tokens: 0,
+  cache_write_tokens: 0,
+  total_tokens: 0,
+  cost_usd: 0,
+};
 
 export interface RCAReport {
   alert_id: string;

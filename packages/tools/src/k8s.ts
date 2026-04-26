@@ -3,7 +3,7 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { truncate } from "./shared.ts";
+import { appendEvidence, setEvidenceMapEntry, truncate } from "./shared.ts";
 
 export function makeK8sListPodsTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -25,8 +25,7 @@ export function makeK8sListPodsTool(ctx: InvestigationContext): AgentTool {
         ...(params.field_selector !== undefined && { fieldSelector: params.field_selector }),
         ...(signal !== undefined && { signal }),
       });
-      const existing = ctx.evidence.k8s_pods ?? [];
-      ctx.evidence.k8s_pods = [...existing, ...pods];
+      appendEvidence(ctx, "k8s_pods", pods);
 
       const unhealthy = pods.filter((p) => !p.ready || p.phase !== "Running").length;
       const summary =
@@ -74,9 +73,7 @@ export function makeK8sDescribeTool(ctx: InvestigationContext): AgentTool {
         ...(signal !== undefined && { signal }),
       });
       const key = `${params.kind}/${params.name}${params.namespace ? `@${params.namespace}` : ""}`;
-      const store = ctx.evidence.k8s_describe ?? {};
-      store[key] = text;
-      ctx.evidence.k8s_describe = store;
+      setEvidenceMapEntry(ctx, "k8s_describe", key, text);
       return {
         summary: truncate(text, 400),
         details: { kind: params.kind, name: params.name, length: text.length },
@@ -103,8 +100,7 @@ export function makeK8sEventsTool(ctx: InvestigationContext): AgentTool {
         ...(params.field_selector !== undefined && { fieldSelector: params.field_selector }),
         ...(signal !== undefined && { signal }),
       });
-      const existing = ctx.evidence.k8s_events ?? [];
-      ctx.evidence.k8s_events = [...existing, ...events];
+      appendEvidence(ctx, "k8s_events", events);
 
       const warnings = events.filter((e) => e.type === "Warning").length;
       const topReasons = [...new Set(events.map((e) => e.reason))].slice(0, 5).join(", ");
@@ -142,9 +138,7 @@ export function makeK8sPodLogsTool(ctx: InvestigationContext): AgentTool {
         ...(signal !== undefined && { signal }),
       });
       const key = `${params.namespace}/${params.pod}${params.container ? `/${params.container}` : ""}`;
-      const store = ctx.evidence.k8s_pod_logs ?? {};
-      store[key] = lines;
-      ctx.evidence.k8s_pod_logs = store;
+      setEvidenceMapEntry(ctx, "k8s_pod_logs", key, lines);
 
       const tail = lines
         .slice(-5)
