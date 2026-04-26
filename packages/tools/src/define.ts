@@ -1,7 +1,33 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { InvestigationContext } from "@opsremedy/core/types";
+import type { AuditEntry, Evidence, InvestigationContext } from "@opsremedy/core/types";
 import type { Static, TSchema } from "typebox";
 import { recordToolCall } from "./shared.ts";
+
+/** Snapshot of evidence-key cardinality for diffing before/after a tool run. */
+function evidenceShape(ev: Evidence): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [k, v] of Object.entries(ev)) {
+    if (v == null) continue;
+    if (Array.isArray(v)) {
+      if (v.length > 0) out.set(k, v.length);
+    } else if (typeof v === "object") {
+      const size = Object.keys(v as object).length;
+      if (size > 0) out.set(k, size);
+    } else {
+      out.set(k, 1);
+    }
+  }
+  return out;
+}
+
+/** Keys that grew (or appeared) between two evidence snapshots. */
+function diffEvidence(before: Map<string, number>, after: Map<string, number>): string[] {
+  const out: string[] = [];
+  for (const [k, n] of after) {
+    if ((before.get(k) ?? 0) < n) out.push(k);
+  }
+  return out;
+}
 
 /**
  * Result returned by a tool's `run` body. The wrapper converts this into the
@@ -37,26 +63,51 @@ export function defineTool<TParams extends TSchema, TDetails = unknown>(def: {
     signal?: AbortSignal,
   ): Promise<AgentToolResult<TDetails>> => {
     const t0 = Date.now();
+    const before = evidenceShape(def.ctx.evidence);
+    let summary = "";
+    let ok = false;
+    let errorMessage: string | undefined;
     try {
-      const { summary, details } = await def.run(params, signal);
+      const result = await def.run(params, signal);
+      summary = result.summary;
+      ok = true;
       recordToolCall(def.ctx, { name: def.name, args: params, ok: true, ms: Date.now() - t0 });
       return {
         content: [{ type: "text", text: summary }],
-        details: details as TDetails,
+        details: result.details as TDetails,
       };
     } catch (err) {
+      errorMessage = (err as Error).message;
+      summary = `error: ${errorMessage}`;
       recordToolCall(def.ctx, {
         name: def.name,
         args: params,
         ok: false,
         ms: Date.now() - t0,
-        error: (err as Error).message,
+        error: errorMessage,
       });
       throw err;
     } finally {
       // Pair with the bump in gather.ts:beforeToolCall. Decrement even on
       // throw so a failing tool doesn't leak budget against the inflight cap.
       if (def.ctx.inflight > 0) def.ctx.inflight--;
+
+      // Audit entry: parallel to tools_called but carries loop, summary, and
+      // which evidence keys grew. Lets reroute + bench reason about trajectory
+      // without re-derivation.
+      const after = evidenceShape(def.ctx.evidence);
+      const entry: AuditEntry = {
+        loop: def.ctx.loop,
+        tool: def.name,
+        args: params,
+        startedAt: t0,
+        durationMs: Date.now() - t0,
+        ok,
+        summary,
+        evidenceKeys: diffEvidence(before, after),
+        ...(errorMessage !== undefined && { errorMessage }),
+      };
+      def.ctx.audit.push(entry);
     }
   };
 

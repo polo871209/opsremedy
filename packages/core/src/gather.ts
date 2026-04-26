@@ -29,6 +29,12 @@ export interface GatherOptions {
   onEvent?: (kind: string, detail?: unknown) => void;
   /** Render LLM thinking on stderr. Default true. */
   displayThinking?: boolean;
+  /**
+   * Optional hint injected into the user prompt for reroute passes (loop>0).
+   * Carries a focused checklist of what to fetch next, derived in code from
+   * gaps in the first-pass evidence. Ignored when empty.
+   */
+  rerouteHint?: string;
 }
 
 /**
@@ -69,9 +75,17 @@ export async function gatherEvidence(ctx: InvestigationContext, options: GatherO
     }
   });
 
-  await agent.prompt(
-    `Investigate the alert. Call tools to gather evidence. When you have enough, stop calling tools and reply with "READY_TO_DIAGNOSE" so the diagnosis agent can take over.`,
-  );
+  const baseInstruction = `Investigate the alert. Call tools to gather evidence. When you have enough, stop calling tools and reply with "READY_TO_DIAGNOSE" so the diagnosis agent can take over.`;
+  const userPrompt = options.rerouteHint
+    ? `${baseInstruction}
+
+The first investigation pass was inconclusive. Targeted follow-up:
+${options.rerouteHint}
+
+Use the existing evidence; do NOT re-run tool calls that already returned data. Focus on the gaps above.`
+    : baseInstruction;
+
+  await agent.prompt(userPrompt);
 
   return sumUsage(agent.state.messages as never);
 }

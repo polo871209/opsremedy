@@ -20,6 +20,8 @@ function newCtx(evidence: InvestigationContext["evidence"]): InvestigationContex
     inflight: 0,
     max_tool_calls: 10,
     started_at: Date.now(),
+    loop: 0,
+    audit: [],
   };
 }
 

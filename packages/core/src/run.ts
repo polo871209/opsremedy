@@ -19,6 +19,8 @@ export function newContext(alert: Alert, maxToolCalls = 20): InvestigationContex
     inflight: 0,
     max_tool_calls: maxToolCalls,
     started_at: Date.now(),
+    loop: 0,
+    audit: [],
   };
 }
 

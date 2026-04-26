@@ -2,7 +2,7 @@ import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { appendEvidence } from "./shared.ts";
+import { appendEvidence, IntentObject } from "./shared.ts";
 
 export function makeProposeRemediationTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -21,6 +21,7 @@ export function makeProposeRemediationTool(ctx: InvestigationContext): AgentTool
         }),
       ),
       risk: Type.Union([Type.Literal("low"), Type.Literal("medium"), Type.Literal("high")]),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params) => {

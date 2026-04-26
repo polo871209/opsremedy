@@ -1,4 +1,63 @@
 import type { Evidence, InvestigationContext, ToolCallAudit } from "@opsremedy/core/types";
+import { Type } from "typebox";
+
+/**
+ * Per-tool retrieval intent. Optional hint the LLM populates to scope a call:
+ * how far back to look, what severity floor, how many items it wants. Each
+ * tool's `run` reads only the fields that apply to it; unknown fields are
+ * harmless. Back-compat: omitting `intent` preserves existing behaviour.
+ *
+ * Mirrors OpenSRE's `RetrievalControlsMap` but expressed per-call rather than
+ * carried in a separate plan structure.
+ */
+export const IntentObject = Type.Object(
+  {
+    time_window: Type.Optional(
+      Type.Union(
+        [
+          Type.Literal("5m"),
+          Type.Literal("15m"),
+          Type.Literal("1h"),
+          Type.Literal("6h"),
+          Type.Literal("24h"),
+        ],
+        { description: "Lookback window. Maps to per-tool minutes." },
+      ),
+    ),
+    level: Type.Optional(
+      Type.Union([Type.Literal("ERROR"), Type.Literal("WARN"), Type.Literal("INFO"), Type.Literal("DEBUG")], {
+        description: "Severity floor for log queries (gcp_logs).",
+      }),
+    ),
+    limit: Type.Optional(
+      Type.Number({
+        minimum: 1,
+        maximum: 500,
+        description: "Cap on returned items.",
+      }),
+    ),
+    reason: Type.Optional(Type.String({ description: "Free text rationale recorded in audit." })),
+  },
+  { description: "Optional retrieval intent. Tools use only the fields they understand." },
+);
+
+/** Time-window literal → minutes. */
+export function intentWindowMinutes(window?: "5m" | "15m" | "1h" | "6h" | "24h"): number | undefined {
+  switch (window) {
+    case "5m":
+      return 5;
+    case "15m":
+      return 15;
+    case "1h":
+      return 60;
+    case "6h":
+      return 360;
+    case "24h":
+      return 1440;
+    default:
+      return undefined;
+  }
+}
 
 /** Parse the alert's `fired_at` into a Date; fall back to `Date.now()`. */
 export function alertTime(ctx: InvestigationContext): Date {

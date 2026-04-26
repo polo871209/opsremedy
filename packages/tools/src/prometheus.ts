@@ -3,7 +3,7 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { alertTime, setEvidenceMapEntry } from "./shared.ts";
+import { alertTime, IntentObject, intentWindowMinutes, setEvidenceMapEntry } from "./shared.ts";
 
 export function makePromInstantTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -15,6 +15,7 @@ export function makePromInstantTool(ctx: InvestigationContext): AgentTool {
       'or `kube_pod_container_resource_limits{resource="memory"}`.',
     parameters: Type.Object({
       query: Type.String({ description: "PromQL expression." }),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
@@ -48,11 +49,13 @@ export function makePromRangeTool(ctx: InvestigationContext): AgentTool {
       query: Type.String(),
       lookback_minutes: Type.Optional(Type.Number({ minimum: 1, maximum: 180, default: 30 })),
       step_seconds: Type.Optional(Type.Number({ minimum: 15, maximum: 600, default: 30 })),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
       const end = alertTime(ctx);
-      const lookback = params.lookback_minutes ?? 30;
+      const intentMinutes = intentWindowMinutes(params.intent?.time_window);
+      const lookback = params.lookback_minutes ?? intentMinutes ?? 30;
       const start = new Date(end.getTime() - lookback * 60_000);
       const result = await getClients().prom.range({
         query: params.query,
@@ -85,7 +88,9 @@ export function makePromAlertRulesTool(ctx: InvestigationContext): AgentTool {
     name: "get_prom_alert_rules",
     label: "Prometheus alert rules",
     description: "List Prometheus alerting rules and their current state (firing / pending / inactive).",
-    parameters: Type.Object({}),
+    parameters: Type.Object({
+      intent: Type.Optional(IntentObject),
+    }),
     ctx,
     run: async (_params, signal) => {
       const rules = await getClients().prom.alertRules(signal);

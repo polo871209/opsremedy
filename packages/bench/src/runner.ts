@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadScenarioClients, resetClients, setClients } from "@opsremedy/clients";
 import { executePipeline, newContext, type RCAReport } from "@opsremedy/core";
+import type { AuditEntry } from "@opsremedy/core/types";
 import { listScenarios, loadScenario, type Scenario } from "./load.ts";
 import { type ScenarioScore, scoreScenario } from "./scoring.ts";
 
@@ -19,6 +20,7 @@ export interface ScenarioRun {
   score: ScenarioScore;
   report: RCAReport;
   tools_called: string[];
+  audit: AuditEntry[];
 }
 
 export interface BenchResult {
@@ -48,7 +50,7 @@ async function runOne(
   const toolsCalled = ctx.tools_called.map((t) => t.name);
   const score = scoreScenario(report, ctx.evidence, toolsCalled, scenario.answer);
 
-  return { id: scenario.id, score, report, tools_called: toolsCalled };
+  return { id: scenario.id, score, report, tools_called: toolsCalled, audit: ctx.audit };
 }
 
 export async function runBench(options: BenchOptions = {}): Promise<BenchResult> {

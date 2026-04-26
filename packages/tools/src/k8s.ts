@@ -3,7 +3,7 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { appendEvidence, setEvidenceMapEntry, truncate } from "./shared.ts";
+import { appendEvidence, IntentObject, setEvidenceMapEntry, truncate } from "./shared.ts";
 
 export function makeK8sListPodsTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -16,15 +16,18 @@ export function makeK8sListPodsTool(ctx: InvestigationContext): AgentTool {
       namespace: Type.String(),
       label_selector: Type.Optional(Type.String({ description: "e.g. app=my-app" })),
       field_selector: Type.Optional(Type.String()),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
-      const pods = await getClients().k8s.listPods({
+      const all = await getClients().k8s.listPods({
         namespace: params.namespace,
         ...(params.label_selector !== undefined && { labelSelector: params.label_selector }),
         ...(params.field_selector !== undefined && { fieldSelector: params.field_selector }),
         ...(signal !== undefined && { signal }),
       });
+      const limit = params.intent?.limit;
+      const pods = limit ? all.slice(0, limit) : all;
       appendEvidence(ctx, "k8s_pods", pods);
 
       const unhealthy = pods.filter((p) => !p.ready || p.phase !== "Running").length;
@@ -63,6 +66,7 @@ export function makeK8sDescribeTool(ctx: InvestigationContext): AgentTool {
       ]),
       name: Type.String(),
       namespace: Type.Optional(Type.String()),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
@@ -92,14 +96,17 @@ export function makeK8sEventsTool(ctx: InvestigationContext): AgentTool {
     parameters: Type.Object({
       namespace: Type.String(),
       field_selector: Type.Optional(Type.String()),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
-      const events = await getClients().k8s.events({
+      const all = await getClients().k8s.events({
         namespace: params.namespace,
         ...(params.field_selector !== undefined && { fieldSelector: params.field_selector }),
         ...(signal !== undefined && { signal }),
       });
+      const limit = params.intent?.limit;
+      const events = limit ? all.slice(0, limit) : all;
       appendEvidence(ctx, "k8s_events", events);
 
       const warnings = events.filter((e) => e.type === "Warning").length;
@@ -126,14 +133,16 @@ export function makeK8sPodLogsTool(ctx: InvestigationContext): AgentTool {
       container: Type.Optional(Type.String()),
       tail_lines: Type.Optional(Type.Number({ minimum: 1, maximum: 500, default: 100 })),
       previous: Type.Optional(Type.Boolean()),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
+      const intentLimit = params.intent?.limit;
       const lines = await getClients().k8s.podLogs({
         namespace: params.namespace,
         pod: params.pod,
         ...(params.container !== undefined && { container: params.container }),
-        tailLines: params.tail_lines ?? 100,
+        tailLines: params.tail_lines ?? (intentLimit ? Math.min(intentLimit, 500) : 100),
         ...(params.previous !== undefined && { previous: params.previous }),
         ...(signal !== undefined && { signal }),
       });

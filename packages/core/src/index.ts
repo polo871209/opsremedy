@@ -1,6 +1,8 @@
 export { type DiagnoseResult, diagnose } from "./diagnose.ts";
 export { gatherEvidence, reserveToolCallSlot } from "./gather.ts";
+export { buildHealthyReport, isClearlyHealthy } from "./health/short-circuit.ts";
 export { executePipeline, type PipelineOptions } from "./pipeline.ts";
+export { buildRerouteHint, MAX_GATHER_LOOPS, type RerouteDecision, shouldReroute } from "./reroute.ts";
 export { newContext, type RunOptions, runInvestigation } from "./run.ts";
 export * from "./types.ts";
 export { listModels, listProviders, resolveModel } from "./util/model.ts";

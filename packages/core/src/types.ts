@@ -106,6 +106,27 @@ export interface ToolCallAudit {
   error?: string;
 }
 
+/**
+ * Per-tool-call audit entry capturing intent, outcome, and which evidence
+ * keys the call wrote. Mirrors `tools_called` for the legacy view but adds
+ * loop, summary, and evidence diff so reroute logic + bench scoring can
+ * reason about trajectory without re-derivation.
+ */
+export interface AuditEntry {
+  /** Reroute loop in which the call ran (0 for the first gather pass). */
+  loop: number;
+  tool: string;
+  args: unknown;
+  startedAt: number;
+  durationMs: number;
+  ok: boolean;
+  errorMessage?: string;
+  /** Short text the gathering agent saw as the tool result. */
+  summary: string;
+  /** Evidence keys that became populated (or grew) as a result of this call. */
+  evidenceKeys: string[];
+}
+
 export interface Evidence {
   gcp_logs?: LogEntry[];
   gcp_error_logs?: LogEntry[];
@@ -143,6 +164,10 @@ export interface InvestigationContext {
   inflight: number;
   max_tool_calls: number;
   started_at: number;
+  /** Current reroute loop number; 0 for first gather pass. */
+  loop: number;
+  /** Structured per-tool-call audit, parallel to `tools_called`. */
+  audit: AuditEntry[];
 }
 
 // -------------------- output --------------------

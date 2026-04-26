@@ -3,7 +3,7 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { appendEvidence, truncate, windowAroundAlert } from "./shared.ts";
+import { appendEvidence, IntentObject, intentWindowMinutes, truncate, windowAroundAlert } from "./shared.ts";
 
 export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -26,15 +26,30 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
         }),
       ),
       max_results: Type.Optional(Type.Number({ minimum: 1, maximum: 200, default: 50 })),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
-      const window = windowAroundAlert(ctx, params.time_window_minutes ?? 30);
+      // Resolve intent fallbacks. Explicit params win; intent fills the gap.
+      const intentMinutes = intentWindowMinutes(params.intent?.time_window);
+      const minutes = params.time_window_minutes ?? intentMinutes ?? 30;
+      const intentLimit = params.intent?.limit;
+      const max = params.max_results ?? (intentLimit ? Math.min(intentLimit, 200) : 50);
+
+      // Apply severity floor when intent.level is set and the user filter
+      // doesn't already constrain severity. Simple substring guard avoids
+      // double-filtering when the LLM already wrote `severity>=ERROR`.
+      let filter = params.filter;
+      if (params.intent?.level && !/severity\s*[>=<]/i.test(filter)) {
+        filter = `(${filter}) AND severity>=${params.intent.level}`;
+      }
+
+      const window = windowAroundAlert(ctx, minutes);
       const entries = await getClients().gcp.search({
-        filter: params.filter,
+        filter,
         from: window.from,
         to: window.to,
-        max: params.max_results ?? 50,
+        max,
         ...(signal !== undefined && { signal }),
       });
 
@@ -58,7 +73,7 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
 
       return {
         summary,
-        details: { filter: params.filter, count: entries.length, errors: errorCount },
+        details: { filter, count: entries.length, errors: errorCount },
       };
     },
   });

@@ -3,7 +3,7 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { appendEvidence } from "./shared.ts";
+import { appendEvidence, IntentObject, intentWindowMinutes } from "./shared.ts";
 
 export function makeJaegerTracesTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -18,15 +18,18 @@ export function makeJaegerTracesTool(ctx: InvestigationContext): AgentTool {
       min_duration_ms: Type.Optional(Type.Number({ minimum: 0 })),
       lookback_minutes: Type.Optional(Type.Number({ minimum: 1, maximum: 360, default: 30 })),
       limit: Type.Optional(Type.Number({ minimum: 1, maximum: 50, default: 20 })),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
+      const intentMinutes = intentWindowMinutes(params.intent?.time_window);
+      const intentLimit = params.intent?.limit;
       const traces = await getClients().jaeger.findTraces({
         service: params.service,
         ...(params.operation !== undefined && { operation: params.operation }),
         ...(params.min_duration_ms !== undefined && { minDurationMs: params.min_duration_ms }),
-        lookbackMinutes: params.lookback_minutes ?? 30,
-        limit: params.limit ?? 20,
+        lookbackMinutes: params.lookback_minutes ?? intentMinutes ?? 30,
+        limit: params.limit ?? (intentLimit ? Math.min(intentLimit, 50) : 20),
         ...(signal !== undefined && { signal }),
       });
       appendEvidence(ctx, "jaeger_traces", traces);
@@ -57,12 +60,14 @@ export function makeJaegerDepsTool(ctx: InvestigationContext): AgentTool {
     parameters: Type.Object({
       service: Type.String(),
       lookback_minutes: Type.Optional(Type.Number({ minimum: 5, maximum: 1440, default: 60 })),
+      intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
+      const intentMinutes = intentWindowMinutes(params.intent?.time_window);
       const deps = await getClients().jaeger.serviceDependencies({
         service: params.service,
-        lookbackMinutes: params.lookback_minutes ?? 60,
+        lookbackMinutes: params.lookback_minutes ?? intentMinutes ?? 60,
         ...(signal !== undefined && { signal }),
       });
       appendEvidence(ctx, "jaeger_service_deps", deps);
