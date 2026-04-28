@@ -22,14 +22,35 @@ Read-only by design. `propose_remediation` records suggestions; nothing executes
 
 ```mermaid
 flowchart TD
-    A[Alert URL or JSON] --> C[Phase 1: Gather]
-    C -->|11 read-only tools| D[(Evidence: logs, metrics, traces, k8s state)]
-    C -.->|tool budget exceeded| F
-    D --> E[Phase 2: Diagnose]
-    E -->|strict JSON, 1 retry| F[Validate claims vs evidence]
-    F --> G[RCA Report: cause, chain, remediation, confidence, cost]
+    A[Alert URL or alert.json] --> B[Load alert]
+    B --> C[Bootstrap read-only clients]
+    C --> D[Create investigation context]
 
-    C -.-> T[Tools: query_gcp_logs, query_prom_*, query_jaeger_*, k8s_*, propose_remediation]
+    D --> E[Deterministic tool plan]
+    E -->|alert labels + text| F[Select candidate tools]
+    F --> G[Gather agent]
+
+    G -->|tool budget + reserved evidence slots| H{Tool call allowed?}
+    H -->|yes| I[Run read-only tool]
+    H -->|no| G
+    I --> J[(Evidence store)]
+    I --> K[(Tool audit + provenance)]
+    J --> G
+
+    G --> L{Clearly healthy?}
+    L -->|yes| M[Healthy short-circuit report]
+    L -->|no| N[Diagnosis agent]
+
+    N -->|strict JSON, 1 retry| O[Validate claims]
+    O -->|source populated + claim text matches evidence| P[Recompute confidence]
+    P --> Q{Need reroute?}
+    Q -->|unknown or low confidence + budget left| E
+    Q -->|no| R[RCA report]
+
+    M --> S[Output JSON / markdown / Lark]
+    R --> S
+
+    T[Tool families:<br/>GCP logs · Prometheus · Jaeger · Kubernetes · remediation sink] -.-> G
 ```
 
 ## Get started
