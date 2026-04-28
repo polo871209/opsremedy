@@ -6,3 +6,7 @@ updates:
       - "/packages/*"
     schedule:
       interval: "weekly"
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
