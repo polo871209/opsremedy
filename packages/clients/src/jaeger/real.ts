@@ -45,7 +45,11 @@ export class RealJaegerClient implements JaegerClient {
   }
 
   async findTraces(q: JaegerTracesQuery): Promise<TraceSummary[]> {
-    const end = Date.now() * 1000; // microseconds
+    // Jaeger expects microseconds. Center on the caller-provided endTime
+    // (typically alert.fired_at) so historical alerts hit the right window;
+    // fall back to wall-clock now for callers that don't pass endTime.
+    const endMs = q.endTime ? q.endTime.getTime() : Date.now();
+    const end = endMs * 1000;
     const start = end - q.lookbackMinutes * 60_000_000;
     const params = new URLSearchParams({
       service: q.service,
@@ -62,7 +66,7 @@ export class RealJaegerClient implements JaegerClient {
   }
 
   async serviceDependencies(q: JaegerDepsQuery): Promise<ServiceDep[]> {
-    const endTs = Date.now();
+    const endTs = q.endTime ? q.endTime.getTime() : Date.now();
     const params = new URLSearchParams({
       endTs: String(endTs),
       lookback: String(q.lookbackMinutes * 60_000),

@@ -65,20 +65,47 @@ export function alertTime(ctx: InvestigationContext): Date {
   return Number.isNaN(t.getTime()) ? new Date() : t;
 }
 
+/**
+ * Lead-in applied to every windowed query so symptom onset (which
+ * predates the alert evaluator tripping) is visible. Alerts always lag
+ * the underlying issue by at least the evaluation window (typically 1-5 min).
+ */
+export const LEAD_IN_MINUTES = 5;
+
+/**
+ * End of the investigation window: the alert's close time when known,
+ * else wall-clock now (alert still firing or close time not provided).
+ * Lives on `alert.annotations.closed_at` when fetched from GCP. ISO8601.
+ */
+export function alertEndTime(ctx: InvestigationContext): Date {
+  const closed = ctx.alert.annotations?.closed_at;
+  if (closed) {
+    const t = new Date(closed);
+    if (!Number.isNaN(t.getTime())) return t;
+  }
+  return new Date();
+}
+
 export interface TimeWindow {
   from: Date;
   to: Date;
 }
 
-export function windowAroundAlert(
-  ctx: InvestigationContext,
-  beforeMinutes: number,
-  afterMinutes = 5,
-): TimeWindow {
-  const center = alertTime(ctx);
+/**
+ * Window covering the active incident: starts `LEAD_IN_MINUTES` before
+ * `fired_at` so symptom onset is visible, ends at the alert's close time
+ * if known otherwise at wall-clock now.
+ *
+ * `beforeMinutes` lets callers extend further back (e.g. prom_range with
+ * 30-minute lookback for trend context). It's added to LEAD_IN, so passing
+ * 0 still yields the 5-minute lead-in.
+ */
+export function windowAroundAlert(ctx: InvestigationContext, beforeMinutes = 0): TimeWindow {
+  const fired = alertTime(ctx);
+  const end = alertEndTime(ctx);
   return {
-    from: new Date(center.getTime() - beforeMinutes * 60_000),
-    to: new Date(center.getTime() + afterMinutes * 60_000),
+    from: new Date(fired.getTime() - (beforeMinutes + LEAD_IN_MINUTES) * 60_000),
+    to: end,
   };
 }
 

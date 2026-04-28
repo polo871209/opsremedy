@@ -37,7 +37,8 @@ short text the gather agent sees; the full payload is mutated onto
 ## Shared helpers (`shared.ts`)
 
 - `alertTime(ctx)` — parse `alert.fired_at`, fallback to `now()`
-- `windowAroundAlert(ctx, before, after)` — time window
+- `alertEndTime(ctx)` — `annotations.closed_at` if alert resolved, else `now()`
+- `windowAroundAlert(ctx, before)` — `[fired - 5m - before, alertEnd]`
 - `appendEvidence(ctx, key, items)` — array-shaped bucket append
 - `setEvidenceMapEntry(ctx, key, subKey, value)` — record-shaped bucket set
 - `truncate(text, max)` — keep summaries small

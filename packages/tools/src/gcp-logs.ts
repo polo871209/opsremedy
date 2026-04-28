@@ -17,7 +17,9 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
     name: "query_gcp_logs",
     label: "Query GCP Cloud Logging",
     description:
-      "Search GCP Cloud Logging around the alert time. " +
+      "Search GCP Cloud Logging across the incident window: from " +
+      "`time_window_minutes + 5` before alert.fired_at to the alert's close time " +
+      "(or now if still firing). " +
       'Prefer targeted filters (severity, resource.labels.pod_name, resource.labels.namespace_name, textPayload:"..."). ' +
       "Examples:\n" +
       '- severity>=ERROR AND resource.labels.pod_name="my-pod"\n' +
@@ -29,7 +31,7 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
           minimum: 1,
           maximum: 180,
           default: 30,
-          description: "Minutes before the alert to include.",
+          description: "Minutes before alert.fired_at to include (a 5-min lead-in is added on top).",
         }),
       ),
       max_results: Type.Optional(Type.Number({ minimum: 1, maximum: 200, default: 50 })),

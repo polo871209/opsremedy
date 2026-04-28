@@ -3,15 +3,47 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { appendEvidence, IntentObject, intentWindowMinutes, recordEvidenceLink } from "./shared.ts";
+import {
+  alertEndTime,
+  alertTime,
+  appendEvidence,
+  IntentObject,
+  intentWindowMinutes,
+  LEAD_IN_MINUTES,
+  recordEvidenceLink,
+} from "./shared.ts";
+
+/**
+ * Compute the lookback the Jaeger client needs so the resulting window is
+ * `[fired_at - lookbackMinutes - LEAD_IN, alertEnd]`. Jaeger's API takes
+ * (endTime, lookback); we expand lookback to cover the gap from fired_at
+ * to alertEnd plus the user's requested lookback plus the 5-min lead-in.
+ */
+function jaegerWindow(
+  ctx: InvestigationContext,
+  lookbackMinutes: number,
+): {
+  endTime: Date;
+  lookbackMinutes: number;
+} {
+  const fired = alertTime(ctx);
+  const end = alertEndTime(ctx);
+  const elapsedMin = Math.max(0, Math.ceil((end.getTime() - fired.getTime()) / 60_000));
+  return {
+    endTime: end,
+    lookbackMinutes: lookbackMinutes + LEAD_IN_MINUTES + elapsedMin,
+  };
+}
 
 export function makeJaegerTracesTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
     name: "query_jaeger_traces",
     label: "Query Jaeger traces",
     description:
-      "Find recent traces for a service, optionally filtered by operation or minimum duration. " +
-      "Use to find slow or errored spans when latency or error-rate alerts fire.",
+      "Find traces for a service across the incident window: from " +
+      "`lookback_minutes + 5` before alert.fired_at to the alert's close time " +
+      "(or now if still firing). Optionally filter by operation or minimum duration. " +
+      "Use to find slow or errored spans that coincided with the alert.",
     parameters: Type.Object({
       service: Type.String({ description: "Jaeger service name." }),
       operation: Type.Optional(Type.String()),
@@ -24,12 +56,15 @@ export function makeJaegerTracesTool(ctx: InvestigationContext): AgentTool {
     run: async (params, signal) => {
       const intentMinutes = intentWindowMinutes(params.intent?.time_window);
       const intentLimit = params.intent?.limit;
+      const userLookback = params.lookback_minutes ?? intentMinutes ?? 30;
+      const window = jaegerWindow(ctx, userLookback);
       const traces = await getClients().jaeger.findTraces({
         service: params.service,
         ...(params.operation !== undefined && { operation: params.operation }),
         ...(params.min_duration_ms !== undefined && { minDurationMs: params.min_duration_ms }),
-        lookbackMinutes: params.lookback_minutes ?? intentMinutes ?? 30,
+        lookbackMinutes: window.lookbackMinutes,
         limit: params.limit ?? (intentLimit ? Math.min(intentLimit, 50) : 20),
+        endTime: window.endTime,
         ...(signal !== undefined && { signal }),
       });
       appendEvidence(ctx, "jaeger_traces", traces);
@@ -56,7 +91,9 @@ export function makeJaegerDepsTool(ctx: InvestigationContext): AgentTool {
     name: "get_jaeger_service_deps",
     label: "Jaeger service dependencies",
     description:
-      "List upstream/downstream services that called or were called by the given service. " +
+      "List upstream/downstream services across the incident window: from " +
+      "`lookback_minutes + 5` before alert.fired_at to the alert's close time " +
+      "(or now if still firing). " +
       "Useful for narrowing the failure domain (upstream producer vs downstream consumer).",
     parameters: Type.Object({
       service: Type.String(),
@@ -66,9 +103,12 @@ export function makeJaegerDepsTool(ctx: InvestigationContext): AgentTool {
     ctx,
     run: async (params, signal) => {
       const intentMinutes = intentWindowMinutes(params.intent?.time_window);
+      const userLookback = params.lookback_minutes ?? intentMinutes ?? 60;
+      const window = jaegerWindow(ctx, userLookback);
       const deps = await getClients().jaeger.serviceDependencies({
         service: params.service,
-        lookbackMinutes: params.lookback_minutes ?? intentMinutes ?? 60,
+        lookbackMinutes: window.lookbackMinutes,
+        endTime: window.endTime,
         ...(signal !== undefined && { signal }),
       });
       appendEvidence(ctx, "jaeger_service_deps", deps);

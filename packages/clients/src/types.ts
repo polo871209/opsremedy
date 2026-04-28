@@ -65,12 +65,20 @@ export interface JaegerTracesQuery {
   minDurationMs?: number;
   lookbackMinutes: number;
   limit: number;
+  /**
+   * End of the search window. Defaults to wall-clock now if absent. Tools
+   * pass alert.fired_at so historical alerts find the traces that actually
+   * coincided with the incident, not whatever happens to be fresh now.
+   */
+  endTime?: Date;
   signal?: AbortSignal;
 }
 
 export interface JaegerDepsQuery {
   service: string;
   lookbackMinutes: number;
+  /** End of the dependency-aggregation window; same semantics as on traces. */
+  endTime?: Date;
   signal?: AbortSignal;
 }
 
