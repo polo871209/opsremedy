@@ -12,7 +12,7 @@ bunx biome check --write .        # apply safe fixes (incl. import order)
 
 **No root tsc.** Typecheck per package:
 ```
-for p in core clients tools bench cli; do bunx tsc --noEmit -p packages/$p/tsconfig.json; done
+for p in core clients tools bench cli notify; do bunx tsc --noEmit -p packages/$p/tsconfig.json; done
 ```
 
 Run CLI without `bun link`:
@@ -24,13 +24,14 @@ bun packages/cli/src/main.ts <command>
 
 ## Architecture
 
-Five workspaces:
+Six workspaces:
 
 - **core** — `runInvestigation()` → `executePipeline()` (shared by bench) → `gatherEvidence()` (pi-mono `Agent` w/ 11 tools, parallel exec, hard tool-call budget enforced via `reserveToolCallSlot` inflight counter) → `diagnose()` (no tools, strict JSON, 1 retry) → `validateAndFinalize()` (code-level claim check, recomputes confidence). Pi-mono = `@mariozechner/pi-agent-core` 0.70.2.
 - **clients** — `Real*` + `Fixture*` impls per source. Module-level registry (`getClients`/`setClients`/`resetClients`). CLI wires real; bench swaps fixtures per scenario.
 - **tools** — 11 `AgentTool` factories. Use `defineTool` helper or TypeBox params collapse to `unknown`. Each mutates `ctx.evidence.<key>` + records audit + returns short summary; full payload only seen by diagnoser.
 - **cli** — onboard wizard + investigate + GCP URL fetch.
 - **bench** — scenario runner + scoring (category, keywords, forbidden, evidence, trajectory, loops).
+- **notify** — Lark message-card builder + `@larksuiteoapi/node-sdk` send wrapper. Pure `buildRcaCard` (testable) + thin `sendLarkCard` seam over `client.im.message.create`. CLI calls post-investigation; failures never fail the run.
 
 Subpath exports `@opsremedy/core/types` and `@opsremedy/clients/{gcp,prom,jaeger,k8s,fixtures}` are load-bearing; tools rely on them.
 
@@ -60,6 +61,13 @@ Resolution: **env > files > defaults**. `bootstrapRealClients()` is async (refre
 - **Bench reuses `executePipeline` from core** — runner doesn't reimplement gather→diagnose→validate. Bench keeps its own `ctx` reference for scoring (`evidence`, `tools_called`).
 - **Bench calls `resetClients()` before `setClients()` per scenario** — registry merges via `Object.assign`, so omitting a fixture would leak the previous scenario's clients.
 - **Tool-call budget is parallel-safe via inflight counter** — `gather.ts:reserveToolCallSlot` bumps `ctx.inflight` before each call; `tools/define.ts` decrements in `finally`. A parallel batch can't exceed `max_tool_calls` even on the last slot.
+- **Lark `Domain` enum**: `Domain.Lark` → `open.larksuite.com` (intl), `Domain.Feishu` → `open.feishu.cn`. Wrong choice → 401 from token endpoint. CLI exposes as `"lark" | "feishu"`.
+- **Lark card `content` is double-encoded**: `client.im.message.create` takes `content: string`, and that string must itself be `JSON.stringify(cardJson)`. `send.ts` does this; don't pass the object.
+- **Lark card body cap is 30KB** (`text` is 150KB). `card.ts` builds to a 25KB target with progressive truncation across 5 levels; oversize fallback replaces body with a stub markdown block.
+- **Lark `uuid` field max 50 chars**, 1-hour dedup window. `buildSendUuid` uses 15-min buckets so quick re-runs collapse but distinct hours don't.
+- **Lark bot must be in the chat first** — error 230002. Adding the bot is a manual step in the Lark group settings; can't be done via API for custom-bot security reasons.
+- **Lark send failures never fail the investigation** — `cmdInvestigate` swallows errors after logging `[lark] error: …`. Don't change this; the report has already been emitted to stdout/markdown.
+- **`@opsremedy/notify` depends on `@opsremedy/core/types`** subpath, not the main barrel — keeps the notify package free of pi-mono / agent runtime imports.
 
 ## Style
 

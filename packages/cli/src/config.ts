@@ -1,6 +1,14 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import {
+  DEFAULT_LARK_DOMAIN,
+  DEFAULT_LARK_LOCALE,
+  DEFAULT_LARK_RECEIVE_TYPE,
+  DEFAULT_LARK_SEND_ON,
+  DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+  type LarkConfig,
+} from "@opsremedy/notify";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 /**
@@ -33,6 +41,16 @@ export interface OpsremedyConfig {
   agent?: {
     max_tool_calls?: number;
   };
+  lark?: {
+    enabled?: boolean;
+    /** "lark" → open.larksuite.com (intl); "feishu" → open.feishu.cn. */
+    domain?: "lark" | "feishu";
+    receive_id_type?: "open_id" | "user_id" | "union_id" | "email" | "chat_id";
+    receive_id?: string;
+    locale?: "en_US" | "zh_CN";
+    send_on?: "always" | "non_healthy" | "low_confidence";
+    low_confidence_threshold?: number;
+  };
 }
 
 export interface OAuthCredentialRecord {
@@ -56,6 +74,10 @@ export interface OpsremedyCredentials {
   prom_bearer_token?: string;
   prom_password?: string;
   jaeger_token?: string;
+  lark?: {
+    app_id?: string;
+    app_secret?: string;
+  };
 }
 
 export const DEFAULT_PROM_URL = "http://localhost:9090";
@@ -142,6 +164,8 @@ export interface ResolvedSettings {
   jaeger: { url: string; token: string | undefined };
   k8s: { kubeconfigPath: string | undefined; context: string | undefined };
   agent: { maxToolCalls: number };
+  /** Undefined when Lark is disabled or unconfigured. */
+  lark: LarkConfig | undefined;
 }
 
 export function resolveSettings(cfg: OpsremedyConfig, creds: OpsremedyCredentials): ResolvedSettings {
@@ -179,6 +203,38 @@ export function resolveSettings(cfg: OpsremedyConfig, creds: OpsremedyCredential
     jaeger: { url: jaegerUrl, token: jaegerToken },
     k8s: { kubeconfigPath: kubeconfig, context: k8sContext },
     agent: { maxToolCalls: Number.isFinite(maxToolCalls) ? maxToolCalls : DEFAULT_MAX_TOOL_CALLS },
+    lark: resolveLarkConfig(cfg, creds),
+  };
+}
+
+/**
+ * Build a fully-resolved LarkConfig or undefined. Returns undefined when
+ * either disabled in config or missing the credentials needed to send.
+ * Env > file > defaults, matching the rest of the resolver.
+ */
+function resolveLarkConfig(cfg: OpsremedyConfig, creds: OpsremedyCredentials): LarkConfig | undefined {
+  const env = Bun.env;
+  const enabled = cfg.lark?.enabled === true;
+  if (!enabled) return undefined;
+
+  const appId = env.OPSREMEDY_LARK_APP_ID ?? creds.lark?.app_id;
+  const appSecret = env.OPSREMEDY_LARK_APP_SECRET ?? creds.lark?.app_secret;
+  const receiveId = env.OPSREMEDY_LARK_RECEIVE_ID ?? cfg.lark?.receive_id;
+  if (!appId || !appSecret || !receiveId) return undefined;
+
+  const domainRaw = env.OPSREMEDY_LARK_DOMAIN ?? cfg.lark?.domain ?? DEFAULT_LARK_DOMAIN;
+  const domain: LarkConfig["domain"] = domainRaw === "feishu" ? "feishu" : "lark";
+
+  return {
+    enabled: true,
+    domain,
+    appId,
+    appSecret,
+    receiveIdType: cfg.lark?.receive_id_type ?? DEFAULT_LARK_RECEIVE_TYPE,
+    receiveId,
+    locale: cfg.lark?.locale ?? DEFAULT_LARK_LOCALE,
+    sendOn: cfg.lark?.send_on ?? DEFAULT_LARK_SEND_ON,
+    lowConfidenceThreshold: cfg.lark?.low_confidence_threshold ?? DEFAULT_LOW_CONFIDENCE_THRESHOLD,
   };
 }
 

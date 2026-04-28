@@ -66,6 +66,13 @@ opsremedy investigate --url '...' --markdown report.md
 
 Output: structured RCA on stdout, progress events on stderr, optional markdown sidecar.
 
+**Optional: Lark notifications** — push the RCA report to a Lark/Feishu chat as a color-coded message card.
+
+1. Create a self-built app at <https://open.larksuite.com/app>; enable bot ability and add scope `im:message:send_as_bot`.
+2. Add the bot to the target group; copy the chat_id.
+3. Re-run `opsremedy onboard` and answer the Lark prompts (or set `OPSREMEDY_LARK_APP_ID`, `OPSREMEDY_LARK_APP_SECRET`, `OPSREMEDY_LARK_RECEIVE_ID`).
+4. Default policy `non_healthy` skips healthy short-circuits. Force-send with `--lark`, force-skip with `--no-lark`.
+
 ## Bench
 
 Synthetic scenarios with fixture clients — no real infra needed (still hits the LLM).

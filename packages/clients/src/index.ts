@@ -21,6 +21,9 @@ const THROWING: ClientRegistry = {
     async search() {
       throw new Error("GCP client not configured — call setClients() first");
     },
+    uiUrl() {
+      return undefined;
+    },
   },
   prom: {
     async instant() {
@@ -32,6 +35,9 @@ const THROWING: ClientRegistry = {
     async alertRules() {
       throw new Error("Prom client not configured");
     },
+    uiUrl() {
+      return undefined;
+    },
   },
   jaeger: {
     async findTraces() {
@@ -39,6 +45,9 @@ const THROWING: ClientRegistry = {
     },
     async serviceDependencies() {
       throw new Error("Jaeger client not configured");
+    },
+    uiUrl() {
+      return undefined;
     },
   },
   k8s: {

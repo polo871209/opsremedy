@@ -18,4 +18,8 @@ export class FixtureJaegerClient implements JaegerClient {
   async serviceDependencies(q: JaegerDepsQuery): Promise<ServiceDep[]> {
     return this.data.deps?.[q.service] ?? [];
   }
+
+  uiUrl(): undefined {
+    return undefined;
+  }
 }

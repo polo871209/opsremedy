@@ -62,6 +62,7 @@ export async function executePipeline(
           tools_called: ctx.tools_called.map((t) => t.name),
           duration_ms: Date.now() - ctx.started_at,
           usage: addUsage(gatherUsage, lastDiagnoseUsage),
+          ...(ctx.evidence.evidence_links && { evidence_links: ctx.evidence.evidence_links }),
         };
       }
     }
@@ -94,5 +95,9 @@ export async function executePipeline(
   // for-loop runs ≥1 iteration since MAX_GATHER_LOOPS>=1. The non-null
   // assertion encodes that invariant for the type system.
   const finalReport = lastReport!;
-  return { ...finalReport, usage: addUsage(gatherUsage, lastDiagnoseUsage) };
+  return {
+    ...finalReport,
+    usage: addUsage(gatherUsage, lastDiagnoseUsage),
+    ...(ctx.evidence.evidence_links && { evidence_links: ctx.evidence.evidence_links }),
+  };
 }

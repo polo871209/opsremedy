@@ -29,6 +29,21 @@ export class RealGcpLoggingClient implements GcpLoggingClient {
     });
     return entries.map((e) => toLogEntry(e as unknown as RawEntry));
   }
+
+  uiUrl(filter: string, errorsOnly = false): string {
+    // GCP Console Logs Explorer uses a matrix parameter `;query=...` BEFORE
+    // the `?project=...` query string. Putting `;query` after the project
+    // makes the console parse the filter as part of the project name and
+    // returns "Invalid resource requested: projects/<project>;query=...".
+    const projectQs = `?project=${encodeURIComponent(this.projectId)}`;
+    const parts = filter ? [filter] : [];
+    if (errorsOnly && !/severity\s*[>=<]/i.test(filter)) parts.push("severity>=ERROR");
+    if (parts.length === 0) {
+      return `https://console.cloud.google.com/logs/query${projectQs}`;
+    }
+    const matrix = `;query=${encodeURIComponent(parts.join("\n"))}`;
+    return `https://console.cloud.google.com/logs/query${matrix}${projectQs}`;
+  }
 }
 
 interface RawEntry {

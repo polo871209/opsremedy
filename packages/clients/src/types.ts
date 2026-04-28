@@ -24,6 +24,11 @@ export interface GcpLogsQuery {
 
 export interface GcpLoggingClient {
   search(q: GcpLogsQuery): Promise<LogEntry[]>;
+  /**
+   * Build a Cloud Logging UI URL for the given filter, or undefined when
+   * the client has no project context (e.g. fixtures). Pure: no I/O.
+   */
+  uiUrl(filter: string, errorsOnly?: boolean): string | undefined;
 }
 
 // ---------------- Prometheus ----------------
@@ -47,6 +52,8 @@ export interface PromClient {
   instant(q: PromInstantQuery): Promise<PromInstantResult>;
   range(q: PromRangeQuery): Promise<PromSeriesResult>;
   alertRules(signal?: AbortSignal): Promise<PromRuleState[]>;
+  /** UI URL for a query in /graph; falls back to the bare /graph or /alerts. */
+  uiUrl(kind: "graph" | "alerts", query?: string): string | undefined;
 }
 
 // ---------------- Jaeger ----------------
@@ -70,6 +77,8 @@ export interface JaegerDepsQuery {
 export interface JaegerClient {
   findTraces(q: JaegerTracesQuery): Promise<TraceSummary[]>;
   serviceDependencies(q: JaegerDepsQuery): Promise<ServiceDep[]>;
+  /** UI URL for the search or dependencies page; service narrows traces. */
+  uiUrl(kind: "search" | "dependencies", service?: string): string | undefined;
 }
 
 // ---------------- Kubernetes ----------------

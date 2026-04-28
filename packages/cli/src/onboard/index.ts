@@ -14,6 +14,7 @@ import { sectionAgent } from "./sections/agent.ts";
 import { sectionGcp } from "./sections/gcp.ts";
 import { sectionJaeger } from "./sections/jaeger.ts";
 import { sectionK8s } from "./sections/k8s.ts";
+import { sectionLark } from "./sections/lark.ts";
 import { sectionLlm } from "./sections/llm.ts";
 import { sectionProm } from "./sections/prom.ts";
 
@@ -44,6 +45,7 @@ export async function runOnboard(): Promise<void> {
   const jaegerAnswers = await sectionJaeger(existing, jaegerReachable);
   const k8sAnswers = await sectionK8s(existing, k8sContexts);
   const agentAnswers = await sectionAgent(existing);
+  const larkAnswers = await sectionLark(existing, existingCreds);
 
   const newConfig: OpsremedyConfig = {
     llm: { provider: llm.provider, model: llm.modelId },
@@ -52,6 +54,7 @@ export async function runOnboard(): Promise<void> {
     jaeger: { url: jaegerAnswers.url },
     k8s: { ...(k8sAnswers.context && { context: k8sAnswers.context }) },
     agent: agentAnswers,
+    ...(larkAnswers.fileShape.enabled === true && { lark: larkAnswers.fileShape }),
   };
   // Drop empty k8s block.
   if (newConfig.k8s && Object.keys(newConfig.k8s).length === 0) delete newConfig.k8s;
@@ -70,6 +73,10 @@ export async function runOnboard(): Promise<void> {
     ...(promAnswers.bearerToken !== undefined && { prom_bearer_token: promAnswers.bearerToken }),
     ...(promAnswers.password !== undefined && { prom_password: promAnswers.password }),
     ...(jaegerAnswers.token !== undefined && { jaeger_token: jaegerAnswers.token }),
+    ...(larkAnswers.appId !== undefined &&
+      larkAnswers.appSecret !== undefined && {
+        lark: { app_id: larkAnswers.appId, app_secret: larkAnswers.appSecret },
+      }),
   };
   if (Object.keys(newCreds).length > 0) {
     const credsFile = saveCredentials(newCreds);

@@ -30,4 +30,8 @@ export class FixturePromClient implements PromClient {
   async alertRules(): Promise<PromRuleState[]> {
     return this.data.alertRules ?? [];
   }
+
+  uiUrl(): undefined {
+    return undefined;
+  }
 }

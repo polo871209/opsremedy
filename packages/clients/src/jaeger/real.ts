@@ -74,6 +74,12 @@ export class RealJaegerClient implements JaegerClient {
       .map((d) => ({ parent: d.parent, child: d.child, callCount: d.callCount }));
   }
 
+  uiUrl(kind: "search" | "dependencies", service?: string): string {
+    if (kind === "dependencies") return `${this.baseUrl}/dependencies`;
+    if (!service) return `${this.baseUrl}/search`;
+    return `${this.baseUrl}/search?service=${encodeURIComponent(service)}`;
+  }
+
   private async get<T>(path: string, params: URLSearchParams, signal?: AbortSignal): Promise<T> {
     const url = `${this.baseUrl}${path}?${params.toString()}`;
     const res = await fetch(url, {

@@ -51,4 +51,9 @@ export class FixtureGcpLoggingClient implements GcpLoggingClient {
 
     return matches.slice(0, q.max);
   }
+
+  /** Fixtures have no UI; tools must skip linkification when this returns undefined. */
+  uiUrl(): undefined {
+    return undefined;
+  }
 }

@@ -12,6 +12,7 @@
     "@opsremedy/bench": "workspace:*",
     "@opsremedy/clients": "workspace:*",
     "@opsremedy/core": "workspace:*",
+    "@opsremedy/notify": "workspace:*",
     "google-auth-library": "10.6.2",
     "picocolors": "1.1.1",
     "yaml": "2.8.3"

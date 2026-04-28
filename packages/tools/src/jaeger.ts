@@ -3,7 +3,7 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { appendEvidence, IntentObject, intentWindowMinutes } from "./shared.ts";
+import { appendEvidence, IntentObject, intentWindowMinutes, recordEvidenceLink } from "./shared.ts";
 
 export function makeJaegerTracesTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -33,6 +33,7 @@ export function makeJaegerTracesTool(ctx: InvestigationContext): AgentTool {
         ...(signal !== undefined && { signal }),
       });
       appendEvidence(ctx, "jaeger_traces", traces);
+      recordEvidenceLink(ctx, "jaeger_traces", getClients().jaeger.uiUrl("search", params.service));
 
       const errored = traces.filter((t) => t.hasError).length;
       const slowest = traces.reduce((a, b) => (a && a.durationMs > b.durationMs ? a : b), traces[0]);
@@ -71,6 +72,7 @@ export function makeJaegerDepsTool(ctx: InvestigationContext): AgentTool {
         ...(signal !== undefined && { signal }),
       });
       appendEvidence(ctx, "jaeger_service_deps", deps);
+      recordEvidenceLink(ctx, "jaeger_service_deps", getClients().jaeger.uiUrl("dependencies"));
 
       const summary =
         deps.length === 0

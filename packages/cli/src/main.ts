@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { readFileSync, writeFileSync } from "node:fs";
 import { runBench } from "@opsremedy/bench";
-import { type Alert, runInvestigation, TraceWriter } from "@opsremedy/core";
+import { type Alert, type RCAReport, runInvestigation, TraceWriter } from "@opsremedy/core";
+import { buildRcaCard, buildSendUuid, type LarkConfig, sendLarkCard, shouldSend } from "@opsremedy/notify";
 import pc from "picocolors";
 import { bootstrapAuth, bootstrapRealClients } from "./bootstrap.ts";
 import { fetchAlertFromGcp, parseGcpAlertUrl } from "./gcp-alert.ts";
@@ -35,14 +36,14 @@ class CliError extends Error {
 
 const USAGE = [
   "opsremedy onboard",
-  "opsremedy investigate (-i <alert.json> | --url <gcp-monitoring-url>) [--markdown <path>] [--trace <path>] [--max-tool-calls N] [--quiet]",
+  "opsremedy investigate (-i <alert.json> | --url <gcp-monitoring-url>) [--markdown <path>] [--trace <path>] [--max-tool-calls N] [--quiet] [--lark | --no-lark]",
   "opsremedy bench [--scenario <id>] [--json] [--quiet]",
 ].join("\n");
 
 /** Long-option flags that always take a value (`--name VALUE`). */
 const VALUE_FLAGS = new Set(["url", "markdown", "trace", "max-tool-calls", "scenario"]);
 /** Long-option flags that never take a value (`--name`). */
-const BOOL_FLAGS = new Set(["json", "quiet"]);
+const BOOL_FLAGS = new Set(["json", "quiet", "lark", "no-lark"]);
 
 function parseArgs(argv: string[]): { cmd: string; opts: Record<string, string | boolean> } {
   const [, , cmd, ...rest] = argv;
@@ -93,10 +94,12 @@ async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<v
   }
 
   let alert: Alert;
+  let alertUrl: string | undefined;
   if (input) {
     alert = JSON.parse(readFileSync(input, "utf8")) as Alert;
   } else {
-    const parsed = parseGcpAlertUrl(url as string);
+    alertUrl = url as string;
+    const parsed = parseGcpAlertUrl(alertUrl);
     console.error(`[fetch] GCP ${parsed.kind} ${parsed.id} in ${parsed.projectId}...`);
     alert = await fetchAlertFromGcp(parsed);
     console.error(`[fetch] alert: ${alert.alert_name} severity=${alert.severity}`);
@@ -144,8 +147,47 @@ async function cmdInvestigate(opts: Record<string, string | boolean>): Promise<v
       `[usage] ${report.usage.total_tokens} tokens (in=${report.usage.input_tokens} out=${report.usage.output_tokens} cacheR=${report.usage.cache_read_tokens}) cost=$${report.usage.cost_usd.toFixed(4)} duration=${report.duration_ms}ms`,
     );
     if (tracePath) console.error(`[trace] wrote ${tracePath}`);
+
+    await maybeSendLark(report, alert, settings.lark, opts, alertUrl);
   } finally {
     trace?.close();
+  }
+}
+
+/**
+ * Push the report to Lark when configured + policy allows. Failures here
+ * never bubble up to fail the investigation; they're logged only.
+ */
+async function maybeSendLark(
+  report: RCAReport,
+  alert: Alert,
+  lark: LarkConfig | undefined,
+  opts: Record<string, string | boolean>,
+  alertUrl: string | undefined,
+): Promise<void> {
+  if (opts["no-lark"] === true) {
+    console.error("[lark] skipped (--no-lark)");
+    return;
+  }
+  if (!lark) {
+    console.error("[lark] not configured; run `opsremedy onboard` to enable");
+    return;
+  }
+  if (opts.lark !== true && !shouldSend(report, lark.sendOn, lark)) {
+    console.error(`[lark] skipped (policy=${lark.sendOn}, category=${report.root_cause_category})`);
+    return;
+  }
+  console.error(`[lark] sending card (policy=${lark.sendOn}, receive=${lark.receiveId})...`);
+  try {
+    const card = buildRcaCard(report, alert, {
+      ...(alertUrl !== undefined && { alertUrl }),
+      evidenceLinks: report.evidence_links ?? {},
+    });
+    const uuid = buildSendUuid(alert.alert_id);
+    const res = await sendLarkCard(lark, card, uuid);
+    console.error(`[lark] sent message_id=${res.messageId}`);
+  } catch (e) {
+    console.error(`[lark] error: ${(e as Error).message}`);
   }
 }
 

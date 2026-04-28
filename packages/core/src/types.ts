@@ -145,6 +145,13 @@ export interface Evidence {
 
   remediation_proposals?: RemediationProposal[];
 
+  /**
+   * Per-source deep-link URLs populated by tools as they query. Keyed by
+   * EvidenceKey (e.g. "gcp_logs", "jaeger_traces"). Read by the notifier to
+   * linkify claim sources; never consumed by the diagnoser.
+   */
+  evidence_links?: Partial<Record<string, string>>;
+
   [key: string]: unknown;
 }
 
@@ -224,6 +231,12 @@ export interface RCAReport {
   duration_ms: number;
   /** Aggregate token + cost usage across both phases. */
   usage: UsageSummary;
+  /**
+   * Deep-link URLs per evidence source key, copied from `Evidence.evidence_links`
+   * by the pipeline. Optional; consumers (e.g. Lark notifier) treat missing
+   * entries as plain text. Not used by the LLM at any phase.
+   */
+  evidence_links?: Partial<Record<string, string>>;
 }
 
 // -------------------- constants --------------------

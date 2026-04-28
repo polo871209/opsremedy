@@ -3,7 +3,13 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { alertTime, IntentObject, intentWindowMinutes, setEvidenceMapEntry } from "./shared.ts";
+import {
+  alertTime,
+  IntentObject,
+  intentWindowMinutes,
+  recordEvidenceLink,
+  setEvidenceMapEntry,
+} from "./shared.ts";
 
 export function makePromInstantTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -25,6 +31,7 @@ export function makePromInstantTool(ctx: InvestigationContext): AgentTool {
         ...(signal !== undefined && { signal }),
       });
       setEvidenceMapEntry(ctx, "prom_instant", params.query, result);
+      recordEvidenceLink(ctx, "prom_instant", getClients().prom.uiUrl("graph", params.query));
 
       const summary =
         result.series.length === 0
@@ -65,6 +72,7 @@ export function makePromRangeTool(ctx: InvestigationContext): AgentTool {
         ...(signal !== undefined && { signal }),
       });
       setEvidenceMapEntry(ctx, "prom_series", params.query, result);
+      recordEvidenceLink(ctx, "prom_series", getClients().prom.uiUrl("graph", params.query));
 
       const summary =
         result.series.length === 0
@@ -95,6 +103,7 @@ export function makePromAlertRulesTool(ctx: InvestigationContext): AgentTool {
     run: async (_params, signal) => {
       const rules = await getClients().prom.alertRules(signal);
       ctx.evidence.prom_alert_rules = rules;
+      recordEvidenceLink(ctx, "prom_alert_rules", getClients().prom.uiUrl("alerts"));
 
       const firing = rules.filter((r) => r.state === "firing").map((r) => r.name);
       const summary =

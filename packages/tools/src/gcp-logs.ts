@@ -3,7 +3,14 @@ import { getClients } from "@opsremedy/clients";
 import type { InvestigationContext } from "@opsremedy/core/types";
 import { Type } from "typebox";
 import { defineTool } from "./define.ts";
-import { appendEvidence, IntentObject, intentWindowMinutes, truncate, windowAroundAlert } from "./shared.ts";
+import {
+  appendEvidence,
+  IntentObject,
+  intentWindowMinutes,
+  recordEvidenceLink,
+  truncate,
+  windowAroundAlert,
+} from "./shared.ts";
 
 export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
   return defineTool({
@@ -59,6 +66,9 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
       ctx.evidence.gcp_error_logs = (ctx.evidence.gcp_logs ?? []).filter((e) =>
         ["ERROR", "CRITICAL", "ALERT", "EMERGENCY"].includes(e.severity),
       );
+      const gcp = getClients().gcp;
+      recordEvidenceLink(ctx, "gcp_logs", gcp.uiUrl(filter, false));
+      recordEvidenceLink(ctx, "gcp_error_logs", gcp.uiUrl(filter, true));
 
       const errorCount = ctx.evidence.gcp_error_logs.length;
       const topMessages = entries

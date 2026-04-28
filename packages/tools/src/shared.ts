@@ -128,3 +128,17 @@ export function setEvidenceMapEntry<K extends keyof Evidence>(
   current[subKey] = value;
   (ctx.evidence[key] as unknown) = current;
 }
+
+/**
+ * Record a deep-link URL for an evidence source key. No-op when `url` is
+ * undefined (fixture clients return undefined). First write wins so a later
+ * narrower query doesn't replace an earlier broader one — keeps the link
+ * pointing at something that returned data.
+ */
+export function recordEvidenceLink(ctx: InvestigationContext, source: string, url: string | undefined): void {
+  if (!url) return;
+  const links = (ctx.evidence.evidence_links as Record<string, string> | undefined) ?? {};
+  if (links[source]) return;
+  links[source] = url;
+  ctx.evidence.evidence_links = links;
+}

@@ -106,6 +106,12 @@ export class RealPromClient implements PromClient {
     return out;
   }
 
+  uiUrl(kind: "graph" | "alerts", query?: string): string {
+    if (kind === "alerts") return `${this.baseUrl}/alerts`;
+    if (!query) return `${this.baseUrl}/graph`;
+    return `${this.baseUrl}/graph?g0.expr=${encodeURIComponent(query)}&g0.tab=0`;
+  }
+
   private async get<T>(path: string, params: URLSearchParams, signal?: AbortSignal): Promise<T> {
     const url = `${this.baseUrl}${path}?${params.toString()}`;
     const res = await fetch(url, {
