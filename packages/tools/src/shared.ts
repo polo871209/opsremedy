@@ -1,15 +1,6 @@
 import type { Evidence, InvestigationContext, ToolCallAudit } from "@opsremedy/core/types";
 import { Type } from "typebox";
 
-/**
- * Per-tool retrieval intent. Optional hint the LLM populates to scope a call:
- * how far back to look, what severity floor, how many items it wants. Each
- * tool's `run` reads only the fields that apply to it; unknown fields are
- * harmless. Back-compat: omitting `intent` preserves existing behaviour.
- *
- * Mirrors OpenSRE's `RetrievalControlsMap` but expressed per-call rather than
- * carried in a separate plan structure.
- */
 export const IntentObject = Type.Object(
   {
     time_window: Type.Optional(
@@ -41,42 +32,25 @@ export const IntentObject = Type.Object(
   { description: "Optional retrieval intent. Tools use only the fields they understand." },
 );
 
-/** Time-window literal → minutes. */
+const WINDOW_MINUTES = {
+  "5m": 5,
+  "15m": 15,
+  "1h": 60,
+  "6h": 360,
+  "24h": 1440,
+} as const;
+
 export function intentWindowMinutes(window?: "5m" | "15m" | "1h" | "6h" | "24h"): number | undefined {
-  switch (window) {
-    case "5m":
-      return 5;
-    case "15m":
-      return 15;
-    case "1h":
-      return 60;
-    case "6h":
-      return 360;
-    case "24h":
-      return 1440;
-    default:
-      return undefined;
-  }
+  return window ? WINDOW_MINUTES[window] : undefined;
 }
 
-/** Parse the alert's `fired_at` into a Date; fall back to `Date.now()`. */
 export function alertTime(ctx: InvestigationContext): Date {
   const t = new Date(ctx.alert.fired_at);
   return Number.isNaN(t.getTime()) ? new Date() : t;
 }
 
-/**
- * Lead-in applied to every windowed query so symptom onset (which
- * predates the alert evaluator tripping) is visible. Alerts always lag
- * the underlying issue by at least the evaluation window (typically 1-5 min).
- */
 export const LEAD_IN_MINUTES = 5;
 
-/**
- * End of the investigation window: the alert's close time when known,
- * else wall-clock now (alert still firing or close time not provided).
- * Lives on `alert.annotations.closed_at` when fetched from GCP. ISO8601.
- */
 export function alertEndTime(ctx: InvestigationContext): Date {
   const closed = ctx.alert.annotations?.closed_at;
   if (closed) {
@@ -91,15 +65,6 @@ export interface TimeWindow {
   to: Date;
 }
 
-/**
- * Window covering the active incident: starts `LEAD_IN_MINUTES` before
- * `fired_at` so symptom onset is visible, ends at the alert's close time
- * if known otherwise at wall-clock now.
- *
- * `beforeMinutes` lets callers extend further back (e.g. prom_range with
- * 30-minute lookback for trend context). It's added to LEAD_IN, so passing
- * 0 still yields the 5-minute lead-in.
- */
 export function windowAroundAlert(ctx: InvestigationContext, beforeMinutes = 0): TimeWindow {
   const fired = alertTime(ctx);
   const end = alertEndTime(ctx);
@@ -117,34 +82,24 @@ export function recordToolCall(
   ctx.loop_count++;
 }
 
-/** Truncate a multi-line string so LLM-visible summaries stay small. */
 export function truncate(text: string, maxLen = 280): string {
   if (text.length <= maxLen) return text;
   return `${text.slice(0, maxLen - 3)}...`;
 }
 
-/**
- * Append items to an array-shaped evidence bucket, creating the array on
- * first use. Replaces the boilerplate
- *   const existing = ctx.evidence.foo ?? [];
- *   ctx.evidence.foo = [...existing, ...items];
- */
 export function appendEvidence<K extends keyof Evidence>(
   ctx: InvestigationContext,
   key: K,
   items: Evidence[K] extends (infer U)[] | undefined ? U[] : never,
 ): void {
-  const current = (ctx.evidence[key] as unknown as unknown[] | undefined) ?? [];
-  (ctx.evidence[key] as unknown) = [...current, ...items];
+  const current = ctx.evidence[key] as unknown[] | undefined;
+  if (current) {
+    current.push(...items);
+  } else {
+    (ctx.evidence[key] as unknown) = items;
+  }
 }
 
-/**
- * Set a sub-key on a record-shaped evidence bucket, creating the record on
- * first use. Replaces the boilerplate
- *   const store = ctx.evidence.foo ?? {};
- *   store[subKey] = value;
- *   ctx.evidence.foo = store;
- */
 export function setEvidenceMapEntry<K extends keyof Evidence>(
   ctx: InvestigationContext,
   key: K,
@@ -156,12 +111,6 @@ export function setEvidenceMapEntry<K extends keyof Evidence>(
   (ctx.evidence[key] as unknown) = current;
 }
 
-/**
- * Record a deep-link URL for an evidence source key. No-op when `url` is
- * undefined (fixture clients return undefined). First write wins so a later
- * narrower query doesn't replace an earlier broader one — keeps the link
- * pointing at something that returned data.
- */
 export function recordEvidenceLink(ctx: InvestigationContext, source: string, url: string | undefined): void {
   if (!url) return;
   const links = (ctx.evidence.evidence_links as Record<string, string> | undefined) ?? {};
