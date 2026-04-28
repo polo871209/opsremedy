@@ -1,0 +1,8 @@
+scenario_id: "011-dependency-latency-healthy-k8s"
+difficulty: 5
+expected_category: "dependency"
+required_keywords: ["catalog", "latency", "dependency"]
+forbidden_keywords: ["pod crash", "oom", "kubernetes failure"]
+required_evidence_sources: ["jaeger_traces", "jaeger_service_deps", "k8s_pods"]
+optimal_trajectory: ["k8s_get_pods", "query_jaeger_traces", "get_jaeger_service_deps"]
+max_tool_calls: 9

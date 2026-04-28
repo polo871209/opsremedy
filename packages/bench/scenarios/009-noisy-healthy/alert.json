@@ -1,0 +1,9 @@
+{
+  "alert_id": "bench-009",
+  "alert_name": "ApiErrorRateRecoveredWithNoise",
+  "severity": "warning",
+  "fired_at": "2026-04-25T18:00:00Z",
+  "labels": { "namespace": "api", "service": "public-api" },
+  "annotations": { "summary": "error rate alert auto-resolved; old warnings remain in logs" },
+  "summary": "public-api error rate recovered before investigation"
+}

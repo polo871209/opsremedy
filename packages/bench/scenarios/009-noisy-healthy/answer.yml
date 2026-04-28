@@ -1,0 +1,9 @@
+scenario_id: "009-noisy-healthy"
+difficulty: 3
+expected_category: "healthy"
+required_keywords: ["recovered", "resolved"]
+forbidden_categories: ["dependency", "resource_exhaustion", "deployment"]
+forbidden_keywords: ["current outage", "still failing"]
+required_evidence_sources: ["k8s_pods", "prom_series"]
+optimal_trajectory: ["k8s_get_pods", "query_prom_range"]
+max_tool_calls: 8

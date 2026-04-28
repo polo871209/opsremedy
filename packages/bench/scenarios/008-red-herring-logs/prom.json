@@ -1,0 +1,11 @@
+{
+  "alertRules": [
+    {
+      "name": "CheckoutCrashLoop",
+      "state": "firing",
+      "query": "kube_pod_container_status_restarts_total{namespace=\"checkout\"} > 5",
+      "labels": { "severity": "critical" },
+      "lastTransition": 1777136400
+    }
+  ]
+}

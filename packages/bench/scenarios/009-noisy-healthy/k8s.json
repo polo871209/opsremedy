@@ -1,0 +1,17 @@
+{
+  "pods": {
+    "api": [
+      {
+        "namespace": "api",
+        "name": "public-api-68d9c99c7-aaaaa",
+        "phase": "Running",
+        "ready": true,
+        "restarts": 0,
+        "node": "gke-prod-b-1"
+      }
+    ]
+  },
+  "events": { "api": [] },
+  "describe": {},
+  "logs": {}
+}

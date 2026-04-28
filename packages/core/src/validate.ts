@@ -1,3 +1,4 @@
+import { buildEvidenceProvenance } from "./provenance.ts";
 import {
   ALL_EVIDENCE_KEYS,
   type Evidence,
@@ -99,6 +100,52 @@ function evidenceKeyPopulated(ev: Evidence, key: EvidenceKey): boolean {
   return true;
 }
 
+const STOPWORDS = new Set([
+  "about",
+  "after",
+  "because",
+  "being",
+  "claim",
+  "error",
+  "evidence",
+  "failed",
+  "failure",
+  "from",
+  "have",
+  "into",
+  "shows",
+  "that",
+  "this",
+  "trace",
+  "with",
+]);
+
+function evidenceText(ev: Evidence, key: EvidenceKey): string {
+  const value = ev[key];
+  if (value == null) return "";
+  return JSON.stringify(value).toLowerCase();
+}
+
+function claimTerms(claim: string): string[] {
+  const raw = [...new Set(claim.toLowerCase().match(/[a-z0-9_-]{4,}/g) ?? [])].filter(
+    (term) => !STOPWORDS.has(term),
+  );
+  const terms = new Set(raw);
+  for (const term of raw) {
+    if (term.includes("oom")) terms.add("oom");
+    if (term.includes("crashloop")) terms.add("crashloop");
+  }
+  return [...terms];
+}
+
+function claimMatchesEvidenceText(claim: ValidatedClaim, keys: EvidenceKey[], ev: Evidence): boolean {
+  const terms = claimTerms(claim.claim);
+  if (terms.length === 0) return true;
+  const text = keys.map((key) => evidenceText(ev, key)).join(" ");
+  if (!text) return false;
+  return terms.some((term) => text.includes(term));
+}
+
 /**
  * Decide whether the collected evidence actually backs a claim.
  *
@@ -116,12 +163,40 @@ function isClaimBacked(claim: ValidatedClaim, ev: Evidence): boolean {
   if (declared.length > 0 && !declared.some((k) => evidenceKeyPopulated(ev, k))) {
     return false;
   }
+  if (declared.length > 0 && !claimMatchesEvidenceText(claim, declared, ev)) {
+    return false;
+  }
 
   for (const { keywords, required } of KEYWORD_EVIDENCE_MAP) {
     if (!keywords.test(claim.claim)) continue;
     if (!required.some((k) => evidenceKeyPopulated(ev, k))) return false;
+    if (
+      !claimMatchesEvidenceText(
+        claim,
+        required.filter((k) => evidenceKeyPopulated(ev, k)),
+        ev,
+      )
+    )
+      return false;
   }
   return true;
+}
+
+function confidenceCap(report: RCAReport, ev: Evidence): { cap: number; reason?: string } {
+  const reportText = [report.root_cause, ...report.causal_chain].join(" ").toLowerCase();
+  const hasBadEvidence = Boolean(
+    ev.gcp_error_logs?.length ||
+      ev.k8s_events?.some((event) => event.type === "Warning") ||
+      ev.k8s_pods?.some((pod) => !pod.ready || pod.phase !== "Running"),
+  );
+  if (
+    report.root_cause_category === "healthy" &&
+    hasBadEvidence &&
+    !/recovered|resolved|mitigated|back to normal/.test(reportText)
+  ) {
+    return { cap: 0.4, reason: "Healthy verdict conflicts with active warning/error evidence." };
+  }
+  return { cap: 1 };
 }
 
 // ---------------- public api ----------------
@@ -172,7 +247,10 @@ export function validateAndFinalize(report: RCAReport, ctx: InvestigationContext
   }
 
   const total = validated.length + unverified.length;
-  const confidence = total > 0 ? validated.length / total : 0;
+  const baseConfidence = total > 0 ? validated.length / total : 0;
+  const cap = confidenceCap(report, ctx.evidence);
+  if (cap.reason) unverified.push(cap.reason);
+  const confidence = Math.min(baseConfidence, cap.cap);
 
   return {
     ...report,
@@ -181,5 +259,6 @@ export function validateAndFinalize(report: RCAReport, ctx: InvestigationContext
     confidence: Math.round(confidence * 100) / 100,
     tools_called: ctx.tools_called.map((t) => t.name),
     duration_ms: Date.now() - ctx.started_at,
+    evidence_provenance: buildEvidenceProvenance(ctx),
   };
 }

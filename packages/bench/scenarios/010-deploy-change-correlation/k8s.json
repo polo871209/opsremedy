@@ -1,0 +1,39 @@
+{
+  "pods": {
+    "payments": [
+      {
+        "namespace": "payments",
+        "name": "payments-api-744df9d9c-aaaaa",
+        "phase": "Running",
+        "ready": false,
+        "restarts": 3,
+        "lastTerminationReason": "Error",
+        "node": "gke-prod-c-1"
+      }
+    ]
+  },
+  "events": {
+    "payments": [
+      {
+        "namespace": "payments",
+        "involvedKind": "Deployment",
+        "involvedName": "payments-api",
+        "type": "Normal",
+        "reason": "ScalingReplicaSet",
+        "message": "Scaled up replica set payments-api-744df9d9c for image payments-api:2026.04.25-rc2",
+        "count": 1,
+        "lastSeen": "2026-04-25T18:55:00Z"
+      }
+    ]
+  },
+  "describe": {
+    "deployment/payments-api@payments": "Kind: Deployment\nName: payments-api\nNamespace: payments\nReplicas: desired=4 ready=1 updated=4 available=1\nImage: payments-api:2026.04.25-rc2\nConditions:\n  - Available=False reason=MinimumReplicasUnavailable\n  - Progressing=True reason=ReplicaSetUpdated",
+    "pod/payments-api-744df9d9c-aaaaa@payments": "Name: payments-api-744df9d9c-aaaaa\nNamespace: payments\nReady: False\nImage: payments-api:2026.04.25-rc2\nLast State: Terminated (Error, exit 1)"
+  },
+  "logs": {
+    "payments/payments-api-744df9d9c-aaaaa": [
+      "FATAL migration checksum mismatch introduced in rc2",
+      "ERROR startup failed for payments-api:2026.04.25-rc2"
+    ]
+  }
+}

@@ -99,7 +99,10 @@ function printHuman(run: ScenarioRun): void {
     if (!run.score.category_ok) console.log(`  category mismatch`);
     if (run.score.missing_keywords.length > 0)
       console.log(`  missing keywords: ${run.score.missing_keywords.join(", ")}`);
-    if (!run.score.not_forbidden) console.log(`  hit forbidden category/keywords`);
+    if (!run.score.not_forbidden) {
+      const hits = run.score.hit_forbidden_keywords;
+      console.log(`  hit forbidden category/keywords${hits.length > 0 ? `: ${hits.join(", ")}` : ""}`);
+    }
     if (run.score.missing_evidence.length > 0)
       console.log(`  missing evidence: ${run.score.missing_evidence.join(", ")}`);
     if (run.score.missing_trajectory.length > 0)

@@ -1,0 +1,10 @@
+{
+  "logs": [
+    {
+      "timestamp": "2026-04-25T19:59:30Z",
+      "severity": "WARNING",
+      "textPreview": "catalog-service request latency=2600ms",
+      "resource": { "namespace_name": "frontend", "pod_name": "web-6f8bc8d9f-aaaaa" }
+    }
+  ]
+}

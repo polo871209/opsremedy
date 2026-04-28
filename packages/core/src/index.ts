@@ -6,10 +6,11 @@ export {
   type InvestigationEventMap,
   type InvestigationEventSink,
 } from "./events.ts";
-export { gatherEvidence, reserveToolCallSlot } from "./gather.ts";
+export { gatherEvidence, reserveToolCallSlot, reserveToolCallSlotWithRequiredEvidence } from "./gather.ts";
 export { buildHealthyReport, isClearlyHealthy } from "./health/short-circuit.ts";
 export { executePipeline, type PipelineOptions } from "./pipeline.ts";
-export { ALL_TOOL_NAMES, planGatherTools } from "./planner.ts";
+export { ALL_TOOL_NAMES, missingRequiredPlannedTools, planGatherTools } from "./planner.ts";
+export { buildEvidenceProvenance } from "./provenance.ts";
 export { buildRerouteHint, MAX_GATHER_LOOPS, type RerouteDecision, shouldReroute } from "./reroute.ts";
 export { newContext, type RunOptions, runInvestigation } from "./run.ts";
 export * from "./types.ts";

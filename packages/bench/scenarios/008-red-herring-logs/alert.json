@@ -1,0 +1,9 @@
+{
+  "alert_id": "bench-008",
+  "alert_name": "CheckoutCrashLoopWithNoise",
+  "severity": "critical",
+  "fired_at": "2026-04-25T17:00:00Z",
+  "labels": { "namespace": "checkout", "pod": "checkout-api-7d9f9c8d7b-aaaaa", "service": "checkout-api" },
+  "annotations": { "summary": "checkout-api pods restarting; ignore unrelated analytics warnings" },
+  "summary": "checkout-api entered CrashLoopBackOff while unrelated analytics logs are noisy"
+}

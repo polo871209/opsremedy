@@ -114,4 +114,69 @@ describe("validateAndFinalize", () => {
     expect(final.unverified_claims).toContain("Jaeger trace shows slow downstream call");
     expect(final.confidence).toBe(0);
   });
+
+  test("claim is demoted when evidence text does not support it", () => {
+    const ctx = newCtx({
+      jaeger_traces: [
+        {
+          traceId: "t1",
+          rootService: "api",
+          rootOperation: "GET /orders",
+          durationMs: 100,
+          hasError: true,
+          spanCount: 5,
+          noteworthySpan: "auth-service returned 503",
+        },
+      ],
+    });
+    const report = baseReport({
+      validated_claims: [
+        { claim: "database timeout caused slow checkout", evidence_sources: ["jaeger_traces"] },
+      ],
+    });
+
+    const final = validateAndFinalize(report, ctx);
+
+    expect(final.validated_claims).toHaveLength(0);
+    expect(final.unverified_claims).toContain("database timeout caused slow checkout");
+  });
+
+  test("healthy verdict without recovery language is confidence capped against bad evidence", () => {
+    const ctx = newCtx({
+      gcp_error_logs: [{ timestamp: "now", severity: "ERROR", textPreview: "payment failed" }],
+    });
+    const report = baseReport({
+      root_cause_category: "healthy",
+      root_cause: "service is fine",
+      validated_claims: [{ claim: "payment failed", evidence_sources: ["gcp_error_logs"] }],
+    });
+
+    const final = validateAndFinalize(report, ctx);
+
+    expect(final.confidence).toBe(0.4);
+    expect(final.unverified_claims.join(" ")).toMatch(/conflicts/);
+  });
+
+  test("adds evidence provenance from audit entries", () => {
+    const ctx = newCtx({
+      gcp_logs: [{ timestamp: "now", severity: "ERROR", textPreview: "boom" }],
+    });
+    ctx.audit.push({
+      loop: 0,
+      tool: "query_gcp_logs",
+      args: { filter: "severity>=ERROR" },
+      startedAt: 1,
+      durationMs: 2,
+      ok: true,
+      summary: "Fetched 1 log entry",
+      evidenceKeys: ["gcp_logs"],
+    });
+    const report = baseReport({
+      validated_claims: [{ claim: "boom error", evidence_sources: ["gcp_logs"] }],
+    });
+
+    const final = validateAndFinalize(report, ctx);
+
+    expect(final.evidence_provenance?.gcp_logs?.[0]?.tool).toBe("query_gcp_logs");
+  });
 });

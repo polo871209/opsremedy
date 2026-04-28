@@ -1,0 +1,62 @@
+{
+  "pods": {
+    "checkout": [
+      {
+        "namespace": "checkout",
+        "name": "checkout-api-7d9f9c8d7b-aaaaa",
+        "phase": "Running",
+        "ready": false,
+        "restarts": 9,
+        "lastTerminationReason": "OOMKilled",
+        "node": "gke-prod-a-1"
+      },
+      {
+        "namespace": "checkout",
+        "name": "analytics-worker-55f6c9bbbb-zzzzz",
+        "phase": "Running",
+        "ready": true,
+        "restarts": 0,
+        "node": "gke-prod-a-2"
+      }
+    ]
+  },
+  "events": {
+    "checkout": [
+      {
+        "namespace": "checkout",
+        "involvedKind": "Pod",
+        "involvedName": "checkout-api-7d9f9c8d7b-aaaaa",
+        "type": "Warning",
+        "reason": "OOMKilling",
+        "message": "Container checkout-api was OOMKilled; memory limit 512Mi exceeded",
+        "count": 6,
+        "lastSeen": "2026-04-25T17:00:10Z"
+      },
+      {
+        "namespace": "checkout",
+        "involvedKind": "Pod",
+        "involvedName": "analytics-worker-55f6c9bbbb-zzzzz",
+        "type": "Normal",
+        "reason": "Pulled",
+        "message": "Successfully pulled image",
+        "count": 1,
+        "lastSeen": "2026-04-25T16:59:00Z"
+      }
+    ]
+  },
+  "describe": {
+    "pod/checkout-api-7d9f9c8d7b-aaaaa@checkout": "Name: checkout-api-7d9f9c8d7b-aaaaa\nNamespace: checkout\nStatus: Running\nReady: False\nContainers:\n  checkout-api:\n    Last State: Terminated (OOMKilled, exit 137)\n    Limits: memory: 512Mi\nEvents:\n  Warning OOMKilling memory cgroup out of memory"
+  },
+  "logs": {
+    "checkout/checkout-api-7d9f9c8d7b-aaaaa": [
+      "INFO starting checkout-api",
+      "WARN heap usage 505Mi near limit 512Mi",
+      "FATAL process killed after allocation failure",
+      "INFO restarted container"
+    ],
+    "checkout/analytics-worker-55f6c9bbbb-zzzzz": [
+      "ERROR redis timeout in analytics export",
+      "ERROR redis timeout in analytics export"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { reserveToolCallSlot } from "./gather.ts";
+import { reserveToolCallSlot, reserveToolCallSlotWithRequiredEvidence } from "./gather.ts";
 import { newContext } from "./run.ts";
 import type { Alert } from "./types.ts";
 
@@ -55,5 +55,39 @@ describe("reserveToolCallSlot", () => {
     ctx.loop_count++;
     // Now exactly at cap from completed work; no room for new dispatch.
     expect(reserveToolCallSlot(ctx)?.block).toBe(true);
+  });
+});
+
+describe("reserveToolCallSlotWithRequiredEvidence", () => {
+  test("allows optional tools while enough slots remain for required evidence", () => {
+    const ctx = newContext(
+      { ...ALERT, alert_name: "ApiErrorRateRecovered", summary: "error rate recovered" },
+      3,
+    );
+
+    expect(reserveToolCallSlotWithRequiredEvidence(ctx, "query_gcp_logs")).toBeUndefined();
+    expect(ctx.inflight).toBe(1);
+  });
+
+  test("blocks optional tools when remaining slots are reserved", () => {
+    const ctx = newContext(
+      { ...ALERT, alert_name: "ApiErrorRateRecovered", summary: "error rate recovered" },
+      1,
+    );
+    const res = reserveToolCallSlotWithRequiredEvidence(ctx, "query_gcp_logs");
+
+    expect(res?.block).toBe(true);
+    expect(res?.reason).toMatch(/query_prom_range/);
+    expect(ctx.inflight).toBe(0);
+  });
+
+  test("allows required tool in reserved slot", () => {
+    const ctx = newContext(
+      { ...ALERT, alert_name: "ApiErrorRateRecovered", summary: "error rate recovered" },
+      1,
+    );
+
+    expect(reserveToolCallSlotWithRequiredEvidence(ctx, "query_prom_range")).toBeUndefined();
+    expect(ctx.inflight).toBe(1);
   });
 });

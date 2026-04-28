@@ -2,6 +2,7 @@ import { diagnose } from "./diagnose.ts";
 import { emitInvestigationEvent, type InvestigationEventSink } from "./events.ts";
 import { gatherEvidence } from "./gather.ts";
 import { buildHealthyReport, isClearlyHealthy } from "./health/short-circuit.ts";
+import { buildEvidenceProvenance } from "./provenance.ts";
 import { buildRerouteHint, MAX_GATHER_LOOPS, shouldReroute } from "./reroute.ts";
 import type { InvestigationContext, RCAReport } from "./types.ts";
 import { addUsage, type UsageTotal, ZERO_USAGE } from "./util/usage.ts";
@@ -65,6 +66,7 @@ export async function executePipeline(
           duration_ms: Date.now() - ctx.started_at,
           usage: addUsage(gatherUsage, lastDiagnoseUsage),
           ...(ctx.evidence.evidence_links && { evidence_links: ctx.evidence.evidence_links }),
+          evidence_provenance: buildEvidenceProvenance(ctx),
         };
       }
     }

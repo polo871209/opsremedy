@@ -1,0 +1,9 @@
+{
+  "alert_id": "bench-011",
+  "alert_name": "FrontendP99LatencyHigh",
+  "severity": "critical",
+  "fired_at": "2026-04-25T20:00:00Z",
+  "labels": { "namespace": "frontend", "service": "web" },
+  "annotations": { "summary": "web p99 latency high; pods are healthy" },
+  "summary": "frontend web latency caused by slow catalog dependency while Kubernetes remains healthy"
+}

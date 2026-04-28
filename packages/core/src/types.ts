@@ -98,6 +98,13 @@ export interface RemediationProposal {
   risk: "low" | "medium" | "high";
 }
 
+export interface EvidenceProvenanceEntry {
+  tool: string;
+  args: unknown;
+  loop: number;
+  summary: string;
+}
+
 export interface ToolCallAudit {
   name: string;
   args: unknown;
@@ -250,6 +257,8 @@ export interface RCAReport {
    * entries as plain text. Not used by the LLM at any phase.
    */
   evidence_links?: Partial<Record<string, string>>;
+  /** Evidence key → tool calls that populated it. */
+  evidence_provenance?: Record<string, EvidenceProvenanceEntry[]>;
 }
 
 // -------------------- constants --------------------

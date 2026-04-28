@@ -1,0 +1,9 @@
+{
+  "alert_id": "bench-010",
+  "alert_name": "PaymentsErrorsAfterRollout",
+  "severity": "critical",
+  "fired_at": "2026-04-25T19:00:00Z",
+  "labels": { "namespace": "payments", "deployment": "payments-api", "service": "payments-api" },
+  "annotations": { "summary": "errors began minutes after image payments-api:2026.04.25-rc2 rollout" },
+  "summary": "payments-api errors correlate with new deployment image rc2"
+}
