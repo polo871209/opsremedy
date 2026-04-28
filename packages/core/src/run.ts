@@ -1,3 +1,4 @@
+import { emitInvestigationEvent, type InvestigationEventSink } from "./events.ts";
 import { executePipeline } from "./pipeline.ts";
 import type { Alert, InvestigationContext, RCAReport } from "./types.ts";
 
@@ -5,7 +6,7 @@ export interface RunOptions {
   provider?: string;
   model?: string;
   max_tool_calls?: number;
-  onEvent?: (kind: string, detail?: unknown) => void;
+  onEvent?: InvestigationEventSink;
   /** Render LLM thinking on stderr. Default true. */
   displayThinking?: boolean;
 }
@@ -21,6 +22,7 @@ export function newContext(alert: Alert, maxToolCalls = 20): InvestigationContex
     started_at: Date.now(),
     loop: 0,
     audit: [],
+    plan_audit: [],
   };
 }
 
@@ -37,7 +39,7 @@ export async function runInvestigation(alert: Alert, options: RunOptions = {}): 
   const maxToolCalls = options.max_tool_calls ?? Number(Bun.env.OPSREMEDY_MAX_TOOL_CALLS ?? 20);
 
   const ctx = newContext(alert, maxToolCalls);
-  options.onEvent?.("investigation_start", { alert_id: alert.alert_id });
+  emitInvestigationEvent(options.onEvent, "investigation_start", { alert_id: alert.alert_id });
 
   const final = await executePipeline(ctx, {
     provider,
@@ -46,7 +48,8 @@ export async function runInvestigation(alert: Alert, options: RunOptions = {}): 
     ...(options.onEvent && { onEvent: options.onEvent }),
   });
 
-  options.onEvent?.("investigation_end", {
+  emitInvestigationEvent(options.onEvent, "final_result", final);
+  emitInvestigationEvent(options.onEvent, "investigation_end", {
     category: final.root_cause_category,
     confidence: final.confidence,
     usage: final.usage,

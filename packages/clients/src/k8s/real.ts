@@ -1,4 +1,4 @@
-import { CoreV1Api, KubeConfig } from "@kubernetes/client-node";
+import { AppsV1Api, BatchV1Api, CoreV1Api, KubeConfig } from "@kubernetes/client-node";
 import type { EventSummary, PodSummary } from "@opsremedy/core/types";
 import type {
   K8sClient,
@@ -21,6 +21,8 @@ export interface RealK8sClientOptions {
  */
 export class RealK8sClient implements K8sClient {
   private readonly core: CoreV1Api;
+  private readonly apps: AppsV1Api;
+  private readonly batch: BatchV1Api;
 
   constructor(opts: RealK8sClientOptions = {}) {
     const kc = new KubeConfig();
@@ -33,6 +35,8 @@ export class RealK8sClient implements K8sClient {
       kc.setCurrentContext(opts.context);
     }
     this.core = kc.makeApiClient(CoreV1Api);
+    this.apps = kc.makeApiClient(AppsV1Api);
+    this.batch = kc.makeApiClient(BatchV1Api);
   }
 
   async listPods(q: K8sListPodsQuery): Promise<PodSummary[]> {
@@ -45,15 +49,33 @@ export class RealK8sClient implements K8sClient {
   }
 
   async describe(q: K8sDescribeQuery): Promise<string> {
-    // Only `pod` is fully supported for now; other kinds return a stub the LLM can read.
+    const namespace = q.namespace ?? "default";
     if (q.kind === "pod") {
       const pod = await this.core.readNamespacedPod({
         name: q.name,
-        namespace: q.namespace ?? "default",
+        namespace,
       });
       return renderPodDescribe(pod);
     }
-    return `describe for kind=${q.kind} not implemented; use kubectl describe ${q.kind}/${q.name} manually.`;
+    if (q.kind === "deployment") {
+      const deployment = await this.apps.readNamespacedDeployment({ name: q.name, namespace });
+      return renderWorkloadDescribe("Deployment", deployment);
+    }
+    if (q.kind === "statefulset") {
+      const statefulSet = await this.apps.readNamespacedStatefulSet({ name: q.name, namespace });
+      return renderWorkloadDescribe("StatefulSet", statefulSet);
+    }
+    if (q.kind === "job") {
+      const job = await this.batch.readNamespacedJob({ name: q.name, namespace });
+      return renderJobDescribe(job);
+    }
+    if (q.kind === "service") {
+      const service = await this.core.readNamespacedService({ name: q.name, namespace });
+      return renderServiceDescribe(service);
+    }
+
+    const node = await this.core.readNode({ name: q.name });
+    return renderNodeDescribe(node);
   }
 
   async events(q: K8sEventsQuery): Promise<EventSummary[]> {
@@ -95,6 +117,58 @@ interface V1Pod {
   metadata?: { name?: string; namespace?: string };
   spec?: { nodeName?: string };
   status?: { phase?: string; containerStatuses?: V1ContainerStatus[] };
+}
+
+interface V1Condition {
+  type?: string;
+  status?: string;
+  reason?: string;
+  message?: string;
+}
+
+interface V1ObjectMeta {
+  name?: string;
+  namespace?: string;
+  labels?: Record<string, string>;
+}
+
+interface V1Workload {
+  metadata?: V1ObjectMeta;
+  spec?: { replicas?: number; selector?: { matchLabels?: Record<string, string> } };
+  status?: {
+    replicas?: number;
+    readyReplicas?: number;
+    updatedReplicas?: number;
+    availableReplicas?: number;
+    conditions?: V1Condition[];
+  };
+}
+
+interface V1Job {
+  metadata?: V1ObjectMeta;
+  spec?: { parallelism?: number; completions?: number; backoffLimit?: number };
+  status?: { active?: number; succeeded?: number; failed?: number; conditions?: V1Condition[] };
+}
+
+interface V1Service {
+  metadata?: V1ObjectMeta;
+  spec?: {
+    type?: string;
+    clusterIP?: string;
+    selector?: Record<string, string>;
+    ports?: Array<{ name?: string; port?: number; targetPort?: unknown; protocol?: string }>;
+  };
+}
+
+interface V1Node {
+  metadata?: V1ObjectMeta;
+  spec?: { unschedulable?: boolean };
+  status?: {
+    conditions?: V1Condition[];
+    nodeInfo?: { kubeletVersion?: string };
+    capacity?: Record<string, string>;
+    allocatable?: Record<string, string>;
+  };
 }
 
 function toPodSummary(pod: V1Pod): PodSummary {
@@ -161,4 +235,86 @@ function renderPodDescribe(pod: V1Pod): string {
     }
   }
   return lines.join("\n");
+}
+
+function renderWorkloadDescribe(kind: string, workload: V1Workload): string {
+  const lines: string[] = [];
+  lines.push(`Kind: ${kind}`);
+  lines.push(`Name: ${workload.metadata?.name ?? "?"}`);
+  lines.push(`Namespace: ${workload.metadata?.namespace ?? "?"}`);
+  lines.push(
+    `Replicas: desired=${workload.spec?.replicas ?? 0} ready=${workload.status?.readyReplicas ?? 0} updated=${workload.status?.updatedReplicas ?? 0} available=${workload.status?.availableReplicas ?? 0}`,
+  );
+  const selector = workload.spec?.selector?.matchLabels;
+  if (selector && Object.keys(selector).length > 0) lines.push(`Selector: ${formatLabels(selector)}`);
+  appendConditions(lines, workload.status?.conditions);
+  return lines.join("\n");
+}
+
+function renderJobDescribe(job: V1Job): string {
+  const lines: string[] = [];
+  lines.push("Kind: Job");
+  lines.push(`Name: ${job.metadata?.name ?? "?"}`);
+  lines.push(`Namespace: ${job.metadata?.namespace ?? "?"}`);
+  lines.push(`Parallelism: ${job.spec?.parallelism ?? 0}`);
+  lines.push(`Completions: ${job.spec?.completions ?? 0}`);
+  lines.push(`BackoffLimit: ${job.spec?.backoffLimit ?? 0}`);
+  lines.push(
+    `Status: active=${job.status?.active ?? 0} succeeded=${job.status?.succeeded ?? 0} failed=${job.status?.failed ?? 0}`,
+  );
+  appendConditions(lines, job.status?.conditions);
+  return lines.join("\n");
+}
+
+function renderServiceDescribe(service: V1Service): string {
+  const lines: string[] = [];
+  lines.push("Kind: Service");
+  lines.push(`Name: ${service.metadata?.name ?? "?"}`);
+  lines.push(`Namespace: ${service.metadata?.namespace ?? "?"}`);
+  lines.push(`Type: ${service.spec?.type ?? "?"}`);
+  lines.push(`ClusterIP: ${service.spec?.clusterIP ?? "?"}`);
+  if (service.spec?.selector && Object.keys(service.spec.selector).length > 0)
+    lines.push(`Selector: ${formatLabels(service.spec.selector)}`);
+  const ports = service.spec?.ports ?? [];
+  if (ports.length > 0) {
+    lines.push("Ports:");
+    for (const p of ports)
+      lines.push(
+        `  - ${p.name ?? "unnamed"}: ${p.port ?? "?"} -> ${String(p.targetPort ?? "?")} ${p.protocol ?? "TCP"}`,
+      );
+  }
+  return lines.join("\n");
+}
+
+function renderNodeDescribe(node: V1Node): string {
+  const lines: string[] = [];
+  lines.push("Kind: Node");
+  lines.push(`Name: ${node.metadata?.name ?? "?"}`);
+  lines.push(`Unschedulable: ${node.spec?.unschedulable ?? false}`);
+  if (node.status?.nodeInfo?.kubeletVersion) lines.push(`Kubelet: ${node.status.nodeInfo.kubeletVersion}`);
+  appendResourceMap(lines, "Capacity", node.status?.capacity);
+  appendResourceMap(lines, "Allocatable", node.status?.allocatable);
+  appendConditions(lines, node.status?.conditions);
+  return lines.join("\n");
+}
+
+function appendConditions(lines: string[], conditions: V1Condition[] | undefined): void {
+  if (!conditions?.length) return;
+  lines.push("Conditions:");
+  for (const c of conditions) {
+    lines.push(
+      `  - ${c.type ?? "?"}=${c.status ?? "?"}${c.reason ? ` reason=${c.reason}` : ""}${c.message ? ` message=${c.message}` : ""}`,
+    );
+  }
+}
+
+function appendResourceMap(lines: string[], label: string, values: Record<string, string> | undefined): void {
+  if (!values || Object.keys(values).length === 0) return;
+  lines.push(`${label}: ${formatLabels(values)}`);
+}
+
+function formatLabels(values: Record<string, string>): string {
+  return Object.entries(values)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(",");
 }

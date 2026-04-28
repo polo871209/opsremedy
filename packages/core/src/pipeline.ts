@@ -1,4 +1,5 @@
 import { diagnose } from "./diagnose.ts";
+import { emitInvestigationEvent, type InvestigationEventSink } from "./events.ts";
 import { gatherEvidence } from "./gather.ts";
 import { buildHealthyReport, isClearlyHealthy } from "./health/short-circuit.ts";
 import { buildRerouteHint, MAX_GATHER_LOOPS, shouldReroute } from "./reroute.ts";
@@ -17,7 +18,7 @@ export interface PipelineOptions {
   /** Render LLM thinking on stderr. Default true. */
   displayThinking?: boolean;
   /** Progress + tracing callback. */
-  onEvent?: (kind: string, detail?: unknown) => void;
+  onEvent?: InvestigationEventSink;
 }
 
 /**
@@ -40,6 +41,7 @@ export async function executePipeline(
   for (let loop = 0; loop < MAX_GATHER_LOOPS; loop++) {
     ctx.loop = loop;
     onEvent?.("gather_start", { loop });
+    emitInvestigationEvent(onEvent, "evidence_gather_started", { loop });
     const usage = await gatherEvidence(ctx, {
       provider,
       model,
@@ -68,6 +70,7 @@ export async function executePipeline(
     }
 
     onEvent?.("diagnose_start", { loop });
+    emitInvestigationEvent(onEvent, "diagnosis_started", { loop });
     const { report: rawReport, usage: diagnoseUsage } = await diagnose(ctx, {
       provider,
       model,
@@ -79,6 +82,11 @@ export async function executePipeline(
 
     onEvent?.("validate_start", { loop });
     lastReport = validateAndFinalize(rawReport, ctx);
+    emitInvestigationEvent(onEvent, "validation_finished", {
+      loop,
+      category: lastReport.root_cause_category,
+      confidence: lastReport.confidence,
+    });
 
     // A3 — bounded reroute: one extra gather pass when first-pass diagnosis
     // is ambiguous and budget remains.

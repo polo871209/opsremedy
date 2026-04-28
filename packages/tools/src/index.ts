@@ -6,8 +6,8 @@ import { makeK8sDescribeTool, makeK8sEventsTool, makeK8sListPodsTool, makeK8sPod
 import { makePromAlertRulesTool, makePromInstantTool, makePromRangeTool } from "./prometheus.ts";
 import { makeProposeRemediationTool } from "./remediation.ts";
 
-export function makeAllTools(ctx: InvestigationContext): AgentTool[] {
-  return [
+export function makeAllTools(ctx: InvestigationContext, names?: readonly string[]): AgentTool[] {
+  const tools = [
     makeGcpLogsTool(ctx),
     makePromInstantTool(ctx),
     makePromRangeTool(ctx),
@@ -20,6 +20,9 @@ export function makeAllTools(ctx: InvestigationContext): AgentTool[] {
     makeK8sPodLogsTool(ctx),
     makeProposeRemediationTool(ctx),
   ];
+  if (!names) return tools;
+  const allowed = new Set(names);
+  return tools.filter((tool) => allowed.has(tool.name));
 }
 
 export {

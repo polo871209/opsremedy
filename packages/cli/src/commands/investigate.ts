@@ -28,7 +28,9 @@ export async function cmdInvestigate(opts: CliOptions): Promise<void> {
   const tracePath = typeof opts.trace === "string" ? opts.trace : undefined;
   const trace = tracePath ? new TraceWriter(tracePath) : undefined;
 
+  logEvent("input_loaded", { alert_id: alert.alert_id, source: input ? "file" : "url" });
   trace?.write("alert", alert);
+  trace?.write("input_loaded", { alert_id: alert.alert_id, source: input ? "file" : "url" });
   try {
     const report = await runInvestigation(alert, {
       provider: settings.llm.provider,

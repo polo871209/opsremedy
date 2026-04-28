@@ -1,7 +1,15 @@
 export { type DiagnoseResult, diagnose } from "./diagnose.ts";
+export {
+  emitInvestigationEvent,
+  type InvestigationEvent,
+  type InvestigationEventKind,
+  type InvestigationEventMap,
+  type InvestigationEventSink,
+} from "./events.ts";
 export { gatherEvidence, reserveToolCallSlot } from "./gather.ts";
 export { buildHealthyReport, isClearlyHealthy } from "./health/short-circuit.ts";
 export { executePipeline, type PipelineOptions } from "./pipeline.ts";
+export { ALL_TOOL_NAMES, planGatherTools } from "./planner.ts";
 export { buildRerouteHint, MAX_GATHER_LOOPS, type RerouteDecision, shouldReroute } from "./reroute.ts";
 export { newContext, type RunOptions, runInvestigation } from "./run.ts";
 export * from "./types.ts";

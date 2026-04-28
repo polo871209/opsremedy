@@ -22,6 +22,7 @@ function newCtx(evidence: InvestigationContext["evidence"]): InvestigationContex
     started_at: Date.now(),
     loop: 0,
     audit: [],
+    plan_audit: [],
   };
 }
 

@@ -1,5 +1,7 @@
 import { Agent } from "@mariozechner/pi-agent-core";
 import { makeAllTools } from "@opsremedy/tools";
+import { emitInvestigationEvent, type InvestigationEventSink } from "./events.ts";
+import { planGatherTools } from "./planner.ts";
 import { gatherSystemPrompt } from "./prompts.ts";
 import type { InvestigationContext } from "./types.ts";
 import { resolveModel } from "./util/model.ts";
@@ -26,7 +28,7 @@ export interface GatherOptions {
   provider: string;
   model: string;
   /** Called for progress logging (e.g. tool starts/ends). Optional. */
-  onEvent?: (kind: string, detail?: unknown) => void;
+  onEvent?: InvestigationEventSink;
   /** Render LLM thinking on stderr. Default true. */
   displayThinking?: boolean;
   /**
@@ -43,7 +45,14 @@ export interface GatherOptions {
  * Returns aggregate token usage from this phase.
  */
 export async function gatherEvidence(ctx: InvestigationContext, options: GatherOptions): Promise<UsageTotal> {
-  const tools = makeAllTools(ctx);
+  const plan = planGatherTools(ctx.alert, ctx.loop, options.rerouteHint);
+  ctx.plan_audit.push(plan);
+  emitInvestigationEvent(options.onEvent, "tool_plan", plan);
+
+  const tools = makeAllTools(
+    ctx,
+    plan.selectedTools.map((entry) => entry.tool),
+  );
   const model = resolveModel(options.provider, options.model);
 
   const agent = new Agent({
@@ -68,8 +77,10 @@ export async function gatherEvidence(ctx: InvestigationContext, options: GatherO
       thinking.handleAssistantEvent(event.assistantMessageEvent);
     } else if (event.type === "tool_execution_start") {
       options.onEvent?.("tool_start", { name: event.toolName, args: event.args });
+      emitInvestigationEvent(options.onEvent, "tool_started", { name: event.toolName, args: event.args });
     } else if (event.type === "tool_execution_end") {
       options.onEvent?.("tool_end", { toolCallId: event.toolCallId });
+      emitInvestigationEvent(options.onEvent, "tool_finished", { toolCallId: event.toolCallId });
     } else if (event.type === "agent_end") {
       options.onEvent?.("gather_end");
     }

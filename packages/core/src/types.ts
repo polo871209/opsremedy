@@ -127,6 +127,17 @@ export interface AuditEntry {
   evidenceKeys: string[];
 }
 
+export interface ToolPlanEntry {
+  tool: string;
+  reason: string;
+}
+
+export interface GatherPlanAudit {
+  loop: number;
+  selectedTools: ToolPlanEntry[];
+  omittedTools: ToolPlanEntry[];
+}
+
 export interface Evidence {
   gcp_logs?: LogEntry[];
   gcp_error_logs?: LogEntry[];
@@ -175,6 +186,8 @@ export interface InvestigationContext {
   loop: number;
   /** Structured per-tool-call audit, parallel to `tools_called`. */
   audit: AuditEntry[];
+  /** Deterministic tool-selection audit before each gather pass. */
+  plan_audit: GatherPlanAudit[];
 }
 
 // -------------------- output --------------------
