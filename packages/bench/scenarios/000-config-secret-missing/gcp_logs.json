@@ -1,0 +1,54 @@
+{
+  "logs": [
+    {
+      "timestamp": "2026-04-25T18:44:55Z",
+      "severity": "ERROR",
+      "textPreview": "MountVolume.SetUp failed for volume snowflake-creds: secret snowflake-prod-v1 not found",
+      "resource": {
+        "pod_name": "etl-runner-65b9-qqqqq",
+        "namespace_name": "data",
+        "container_name": "kubelet"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T18:43:20Z",
+      "severity": "WARNING",
+      "textPreview": "log-shipper sidecar OOMKilled (chronic since 2026-04-15)",
+      "resource": {
+        "pod_name": "log-shipper-fluent-2-rrrr",
+        "namespace_name": "data",
+        "container_name": "log-shipper"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T18:40:00Z",
+      "severity": "INFO",
+      "textPreview": "Secret snowflake-prod rotated: new version snowflake-prod-v2 created",
+      "resource": {
+        "pod_name": "external-secrets-controller-0",
+        "namespace_name": "external-secrets",
+        "container_name": "controller"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T18:42:00Z",
+      "severity": "ERROR",
+      "textPreview": "etl-runner failed query: warehouse DATA_WH temporarily suspended",
+      "resource": {
+        "pod_name": "etl-runner-canary-12345",
+        "namespace_name": "data",
+        "container_name": "etl-runner"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T18:44:10Z",
+      "severity": "WARNING",
+      "textPreview": "image pull backoff for unrelated notebook-server:latest",
+      "resource": {
+        "pod_name": "notebook-server-6d4b9-ppppp",
+        "namespace_name": "data",
+        "container_name": "notebook"
+      }
+    }
+  ]
+}

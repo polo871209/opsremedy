@@ -1,0 +1,29 @@
+{
+  "range": {
+    "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"web\"}[5m])) by (le))": {
+      "series": [
+        {
+          "metric": { "service": "web", "quantile": "0.99" },
+          "values": [{ "timestamp": 1777146900, "value": 0.4 }, { "timestamp": 1777147200, "value": 3.2 }]
+        }
+      ]
+    },
+    "rate(container_cpu_usage_seconds_total{namespace=\"frontend\",pod=~\"web-.*\"}[5m])": {
+      "series": [
+        {
+          "metric": { "namespace": "frontend", "pod": "web-6f8bc8d9f-aaaaa" },
+          "values": [{ "timestamp": 1777146900, "value": 0.35 }, { "timestamp": 1777147200, "value": 0.72 }]
+        }
+      ]
+    }
+  },
+  "alertRules": [
+    {
+      "name": "FrontendP99LatencyHigh",
+      "state": "firing",
+      "query": "p99_latency > 2",
+      "labels": { "severity": "critical" },
+      "lastTransition": 1777147200
+    }
+  ]
+}

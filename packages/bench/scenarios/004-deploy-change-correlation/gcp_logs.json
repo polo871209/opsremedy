@@ -1,0 +1,22 @@
+{
+  "logs": [
+    {
+      "timestamp": "2026-04-25T18:56:10Z",
+      "severity": "ERROR",
+      "textPreview": "payments-api:2026.04.25-rc2 startup failed: migration checksum mismatch",
+      "resource": { "namespace_name": "payments", "pod_name": "payments-api-744df9d9c-aaaaa" }
+    },
+    {
+      "timestamp": "2026-04-25T18:54:30Z",
+      "severity": "WARNING",
+      "textPreview": "postgres p99 query latency 1200ms observed before deploy rollout",
+      "resource": { "namespace_name": "payments", "pod_name": "payments-db-0" }
+    },
+    {
+      "timestamp": "2026-04-25T18:56:20Z",
+      "severity": "ERROR",
+      "textPreview": "fraud-service timeout while payments-api unavailable",
+      "resource": { "namespace_name": "payments", "pod_name": "fraud-service-6d9c-zzzzz" }
+    }
+  ]
+}

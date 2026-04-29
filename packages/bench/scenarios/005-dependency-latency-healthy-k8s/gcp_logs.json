@@ -1,0 +1,22 @@
+{
+  "logs": [
+    {
+      "timestamp": "2026-04-25T19:59:30Z",
+      "severity": "WARNING",
+      "textPreview": "catalog-service request latency=2600ms",
+      "resource": { "namespace_name": "frontend", "pod_name": "web-6f8bc8d9f-aaaaa" }
+    },
+    {
+      "timestamp": "2026-04-25T19:58:00Z",
+      "severity": "ERROR",
+      "textPreview": "cdn edge 502 for unrelated static asset /favicon.ico",
+      "resource": { "namespace_name": "edge", "pod_name": "cdn-proxy-0" }
+    },
+    {
+      "timestamp": "2026-04-25T19:59:10Z",
+      "severity": "WARNING",
+      "textPreview": "web pod cpu at 72 percent but below throttling threshold",
+      "resource": { "namespace_name": "frontend", "pod_name": "web-6f8bc8d9f-aaaaa" }
+    }
+  ]
+}

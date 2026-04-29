@@ -1,8 +1,0 @@
-scenario_id: "008-red-herring-logs"
-difficulty: 4
-expected_category: "resource_exhaustion"
-required_keywords: ["oom", "checkout-api"]
-forbidden_keywords: ["analytics root cause", "redis dependency", "dependency outage"]
-required_evidence_sources: ["k8s_events", "k8s_pod_logs"]
-optimal_trajectory: ["k8s_get_pods", "k8s_get_events", "k8s_pod_logs"]
-max_tool_calls: 8

@@ -1,0 +1,28 @@
+{
+  "logs": [
+    {
+      "timestamp": "2026-04-25T17:35:00Z",
+      "severity": "ERROR",
+      "textPreview": "old upstream timeout before rollback completed",
+      "resource": { "namespace_name": "api", "pod_name": "public-api-68d9c99c7-aaaaa" }
+    },
+    {
+      "timestamp": "2026-04-25T17:59:00Z",
+      "severity": "INFO",
+      "textPreview": "health check OK after rollback",
+      "resource": { "namespace_name": "api", "pod_name": "public-api-68d9c99c7-aaaaa" }
+    },
+    {
+      "timestamp": "2026-04-25T17:50:00Z",
+      "severity": "ERROR",
+      "textPreview": "stale 500 from canary revision before rollback; no recurrence after 17:55",
+      "resource": { "namespace_name": "api", "pod_name": "public-api-canary-5d9f8-xxxxx" }
+    },
+    {
+      "timestamp": "2026-04-25T17:58:00Z",
+      "severity": "WARNING",
+      "textPreview": "synthetic monitor missed one probe during rollout window",
+      "resource": { "namespace_name": "monitoring", "pod_name": "synthetic-prober-0" }
+    }
+  ]
+}

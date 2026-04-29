@@ -1,0 +1,28 @@
+{
+  "logs": [
+    {
+      "timestamp": "2026-04-25T16:59:50Z",
+      "severity": "ERROR",
+      "textPreview": "analytics export redis timeout (unrelated workload)",
+      "resource": { "namespace_name": "checkout", "pod_name": "analytics-worker-55f6c9bbbb-zzzzz" }
+    },
+    {
+      "timestamp": "2026-04-25T17:00:02Z",
+      "severity": "CRITICAL",
+      "textPreview": "checkout-api killed after memory allocation failure",
+      "resource": { "namespace_name": "checkout", "pod_name": "checkout-api-7d9f9c8d7b-aaaaa" }
+    },
+    {
+      "timestamp": "2026-04-25T16:58:20Z",
+      "severity": "ERROR",
+      "textPreview": "payment-provider dependency returned 429 rate limited",
+      "resource": { "namespace_name": "checkout", "pod_name": "checkout-api-7d9f9c8d7b-bbbbb" }
+    },
+    {
+      "timestamp": "2026-04-25T16:57:10Z",
+      "severity": "WARNING",
+      "textPreview": "node gke-prod-a-2 disk pressure transient, recovered",
+      "resource": { "namespace_name": "kube-system", "pod_name": "kubelet-gke-prod-a-2" }
+    }
+  ]
+}

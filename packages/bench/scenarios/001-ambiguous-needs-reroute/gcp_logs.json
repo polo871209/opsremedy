@@ -1,0 +1,54 @@
+{
+  "logs": [
+    {
+      "timestamp": "2026-04-25T11:40:00Z",
+      "severity": "ERROR",
+      "textPreview": "upstream connection refused: dial tcp 10.4.2.13:5432: connect: connection refused",
+      "resource": {
+        "namespace_name": "orders",
+        "pod_name": "orders-api-6c4d8b9f7-zzzzz",
+        "container_name": "orders-api"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T11:42:00Z",
+      "severity": "ERROR",
+      "textPreview": "upstream connection refused: dial tcp 10.4.2.13:5432: connect: connection refused",
+      "resource": {
+        "namespace_name": "orders",
+        "pod_name": "orders-api-6c4d8b9f7-zzzzz",
+        "container_name": "orders-api"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T11:43:30Z",
+      "severity": "ERROR",
+      "textPreview": "request_id=r-411 db_call=GetOrder status=500 error=\"db unavailable\"",
+      "resource": {
+        "namespace_name": "orders",
+        "pod_name": "orders-api-6c4d8b9f7-zzzzz",
+        "container_name": "orders-api"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T11:41:20Z",
+      "severity": "WARNING",
+      "textPreview": "orders-api p95 latency 900ms; cpu throttling suspected by autoscaler",
+      "resource": {
+        "namespace_name": "orders",
+        "pod_name": "orders-api-6c4d8b9f7-yyyyy",
+        "container_name": "orders-api"
+      }
+    },
+    {
+      "timestamp": "2026-04-25T11:39:00Z",
+      "severity": "ERROR",
+      "textPreview": "payment-service 502 from upstream bank sandbox (non-orders traffic)",
+      "resource": {
+        "namespace_name": "payments",
+        "pod_name": "payment-service-7c8f-aaaaa",
+        "container_name": "payment-service"
+      }
+    }
+  ]
+}

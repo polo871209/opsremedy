@@ -100,7 +100,7 @@ Synthetic scenarios with fixture clients — no real infra needed (still hits th
 
 ```bash
 bun run bench                              # all scenarios
-bun run bench -- --scenario 005-recovered-healthy
+bun run bench -- --scenario 003-noisy-healthy
 ```
 
 ## Caveats

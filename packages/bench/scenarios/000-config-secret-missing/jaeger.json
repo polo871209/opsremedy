@@ -1,0 +1,16 @@
+{
+  "traces": {
+    "etl-runner": [
+      {
+        "traceId": "trace-noise-000",
+        "rootService": "etl-runner",
+        "rootOperation": "POST /query",
+        "durationMs": 1800,
+        "hasError": true,
+        "spanCount": 9,
+        "noteworthySpan": "snowflake warehouse resume took 1700ms"
+      }
+    ]
+  },
+  "deps": { "etl-runner": [{ "parent": "etl-runner", "child": "snowflake", "callCount": 40 }] }
+}

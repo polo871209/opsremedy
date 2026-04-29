@@ -1,0 +1,8 @@
+scenario_id: "004-deploy-change-correlation"
+difficulty: 4
+expected_category: "deployment"
+required_keywords: ["rollout", "rc2", "payments-api"]
+forbidden_keywords: ["oom", "database down"]
+required_evidence_sources: ["k8s_describe", "gcp_error_logs"]
+optimal_trajectory: ["k8s_describe", "query_gcp_logs"]
+max_tool_calls: 8

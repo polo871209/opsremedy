@@ -1,0 +1,41 @@
+{
+  "instant": {
+    "up{job=\"snowflake\"}": {
+      "resultType": "vector",
+      "series": [{ "metric": { "job": "snowflake" }, "value": { "timestamp": 1745606700, "value": 1 } }]
+    }
+  },
+  "range": {
+    "rate(container_cpu_usage_seconds_total{namespace=\"data\"}[5m])": {
+      "series": [
+        {
+          "metric": { "namespace": "data", "pod": "log-shipper-fluent-2-rrrr" },
+          "values": [{ "timestamp": 1745606400, "value": 0.8 }, { "timestamp": 1745606700, "value": 0.9 }]
+        }
+      ]
+    }
+  },
+  "alertRules": [
+    {
+      "name": "KubernetesPodNotReady",
+      "state": "firing",
+      "query": "kube_pod_status_ready{namespace=\"data\",pod=~\"etl-runner-.*\",condition=\"true\"} == 0",
+      "labels": { "severity": "critical" },
+      "lastTransition": 1745606700
+    },
+    {
+      "name": "LogShipperSidecarOOM",
+      "state": "firing",
+      "query": "increase(kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\",pod=~\"log-shipper-.*\"}[1h]) > 0",
+      "labels": { "severity": "warning" },
+      "lastTransition": 1744761600
+    },
+    {
+      "name": "NotebookImagePullBackOff",
+      "state": "firing",
+      "query": "kube_pod_container_status_waiting_reason{pod=~\"notebook-server-.*\",reason=\"ImagePullBackOff\"} == 1",
+      "labels": { "severity": "warning" },
+      "lastTransition": 1745606650
+    }
+  ]
+}

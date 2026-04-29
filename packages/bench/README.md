@@ -4,6 +4,10 @@ Synthetic scenario harness. Fixture clients per scenario, real LLM. Used to
 measure regression on category accuracy, evidence coverage, and tool
 trajectory.
 
+Keep the catalog small and adversarial. Prefer scenarios that force the agent
+to rule out red herrings, fetch cross-source evidence, or recognize recovery.
+Avoid trivial one-signal cases that only prove a tool can be called.
+
 ## Scenario layout
 
 `packages/bench/scenarios/<NNN-name>/`:
@@ -36,7 +40,7 @@ Add a scenario by copying an existing folder and editing.
 
 ```
 bun run bench                                  # all scenarios
-bun run bench -- --scenario 005-recovered-healthy
+bun run bench -- --scenario 003-noisy-healthy
 bun run bench -- --json                        # machine-readable output
 ```
 

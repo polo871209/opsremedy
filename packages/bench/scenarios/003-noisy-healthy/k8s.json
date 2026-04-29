@@ -1,0 +1,38 @@
+{
+  "pods": {
+    "api": [
+      {
+        "namespace": "api",
+        "name": "public-api-68d9c99c7-aaaaa",
+        "phase": "Running",
+        "ready": true,
+        "restarts": 0,
+        "node": "gke-prod-b-1"
+      },
+      {
+        "namespace": "api",
+        "name": "public-api-canary-5d9f8-xxxxx",
+        "phase": "Succeeded",
+        "ready": false,
+        "restarts": 0,
+        "node": "gke-prod-b-2"
+      }
+    ]
+  },
+  "events": {
+    "api": [
+      {
+        "namespace": "api",
+        "involvedKind": "Pod",
+        "involvedName": "public-api-canary-5d9f8-xxxxx",
+        "type": "Normal",
+        "reason": "Killing",
+        "message": "Stopping old canary container after rollback",
+        "count": 1,
+        "lastSeen": "2026-04-25T17:56:00Z"
+      }
+    ]
+  },
+  "describe": {},
+  "logs": { "api/public-api-canary-5d9f8-xxxxx": ["INFO rollback completed", "INFO no active traffic"] }
+}

@@ -1,0 +1,28 @@
+{
+  "range": {
+    "histogram_quantile(0.99, sum(rate(pg_query_duration_seconds_bucket{namespace=\"payments\"}[5m])) by (le))": {
+      "series": [
+        {
+          "metric": { "namespace": "payments", "db": "payments-db" },
+          "values": [{ "timestamp": 1777143300, "value": 1.2 }, { "timestamp": 1777143600, "value": 0.2 }]
+        }
+      ]
+    }
+  },
+  "alertRules": [
+    {
+      "name": "PaymentsErrorsHigh",
+      "state": "firing",
+      "query": "rate(http_requests_total{namespace=\"payments\",code=~\"5..\"}[5m]) > 0.05",
+      "labels": { "severity": "critical" },
+      "lastTransition": 1777143600
+    },
+    {
+      "name": "PaymentsDbLatencyWarning",
+      "state": "inactive",
+      "query": "pg_p99_latency > 1",
+      "labels": { "severity": "warning" },
+      "lastTransition": 1777143400
+    }
+  ]
+}

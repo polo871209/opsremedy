@@ -1,0 +1,30 @@
+{
+  "traces": {
+    "web": [
+      {
+        "traceId": "trace-lat-001",
+        "rootService": "web",
+        "rootOperation": "GET /home",
+        "durationMs": 3100,
+        "hasError": false,
+        "spanCount": 12,
+        "noteworthySpan": "catalog-service GET /recommendations took 2850ms"
+      },
+      {
+        "traceId": "trace-noise-cdn",
+        "rootService": "web",
+        "rootOperation": "GET /favicon.ico",
+        "durationMs": 900,
+        "hasError": true,
+        "spanCount": 4,
+        "noteworthySpan": "cdn edge returned 502 for static asset"
+      }
+    ]
+  },
+  "deps": {
+    "web": [
+      { "parent": "web", "child": "catalog-service", "callCount": 1200 },
+      { "parent": "web", "child": "cdn-edge", "callCount": 40 }
+    ]
+  }
+}

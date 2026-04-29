@@ -1,0 +1,47 @@
+{
+  "pods": {
+    "frontend": [
+      {
+        "namespace": "frontend",
+        "name": "web-6f8bc8d9f-aaaaa",
+        "phase": "Running",
+        "ready": true,
+        "restarts": 0,
+        "node": "gke-prod-d-1"
+      },
+      {
+        "namespace": "frontend",
+        "name": "web-6f8bc8d9f-bbbbb",
+        "phase": "Running",
+        "ready": true,
+        "restarts": 0,
+        "node": "gke-prod-d-2"
+      }
+    ]
+  },
+  "events": {
+    "frontend": [
+      {
+        "namespace": "frontend",
+        "involvedKind": "Pod",
+        "involvedName": "web-6f8bc8d9f-bbbbb",
+        "type": "Normal",
+        "reason": "Pulled",
+        "message": "Successfully pulled image",
+        "count": 1,
+        "lastSeen": "2026-04-25T19:50:00Z"
+      }
+    ]
+  },
+  "describe": {
+    "pod/web-6f8bc8d9f-aaaaa@frontend": "Name: web-6f8bc8d9f-aaaaa\nNamespace: frontend\nReady: True\nRestart Count: 0\nEvents: <none>"
+  },
+  "logs": {
+    "frontend/web-6f8bc8d9f-aaaaa": [
+      "WARN catalog-service request took 2400ms",
+      "WARN catalog-service request took 2600ms",
+      "INFO pod healthy",
+      "WARN local cpu 72 percent, below throttling threshold"
+    ]
+  }
+}
