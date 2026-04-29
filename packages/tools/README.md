@@ -13,9 +13,9 @@ TypeBox parameter schema.
 | `query_prom_instant` | PromQL at a single timestamp |
 | `query_prom_range` | PromQL over a window (range query) |
 | `get_prom_alert_rules` | List alerting rules + state |
-| `list_prom_metrics` | Discover metric names by substring (resolves "no series returned" before guessing labels) |
-| `get_prom_metric_metadata` | Metric type/help/unit (counter vs gauge vs histogram) |
-| `get_prom_targets` | Scrape target health (up/down + lastError); empty under Google Managed Prometheus |
+| `list_prom_metrics` | Discover metric names by substring. ✅ GMP-compatible. |
+| `get_prom_metric_metadata` | Metric type/help/unit (counter vs gauge vs histogram). ✅ GMP-compatible. |
+| `get_prom_targets` | Scrape target health (up/down + lastError). ❌ Not exposed by GMP gateway — returns empty there; agent falls back to `up{}` query. |
 | `query_jaeger_traces` | Find traces for a service |
 | `get_jaeger_service_deps` | Upstream/downstream edges |
 | `k8s_cluster_info` | Cluster-level facts: node ready count + namespace list |

@@ -30,6 +30,13 @@ export interface OpsremedyConfig {
     url: string;
     bearer_token_env?: string; // name of env var holding token, optional
     user?: string;
+    /**
+     * Authentication mode. "gcp" mints an ADC token per request — required
+     * for Google Managed Prometheus, whose access tokens expire (~1h) and
+     * must be refreshed without restarting the CLI. Defaults to "static"
+     * (use bearer_token_env or basic auth credentials).
+     */
+    auth?: "static" | "gcp";
   };
   jaeger?: {
     url: string;
@@ -160,6 +167,8 @@ export interface ResolvedSettings {
     url: string;
     bearerToken: string | undefined;
     basicAuth: { user: string; password: string } | undefined;
+    /** "gcp" wires an ADC tokenProvider in bootstrap. */
+    auth: "static" | "gcp";
   };
   jaeger: { url: string; token: string | undefined };
   k8s: { kubeconfigPath: string | undefined; context: string | undefined };
@@ -199,6 +208,7 @@ export function resolveSettings(cfg: OpsremedyConfig, creds: OpsremedyCredential
       url: promUrl,
       bearerToken: promBearer,
       basicAuth: promUser && promPass ? { user: promUser, password: promPass } : undefined,
+      auth: cfg.prom?.auth ?? "static",
     },
     jaeger: { url: jaegerUrl, token: jaegerToken },
     k8s: { kubeconfigPath: kubeconfig, context: k8sContext },

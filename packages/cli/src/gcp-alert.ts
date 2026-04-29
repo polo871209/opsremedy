@@ -235,7 +235,14 @@ function inferSeverity(name: string): Alert["severity"] {
 
 let cachedAuth: GoogleAuth | null = null;
 
-async function getAccessToken(): Promise<string> {
+/**
+ * Mint an ADC bearer token for monitoring.read + cloud-platform scopes.
+ * `google-auth-library` caches and refreshes the token internally, so
+ * callers can invoke this per-request safely. Used by both the GCP
+ * Monitoring REST calls in this file and by the GMP-mode Prometheus
+ * client (see bootstrap.ts).
+ */
+export async function getAccessToken(): Promise<string> {
   if (!cachedAuth) {
     cachedAuth = new GoogleAuth({
       scopes: [

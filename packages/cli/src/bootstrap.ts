@@ -18,6 +18,7 @@ import {
   saveCredentials,
 } from "./config.ts";
 import { discoverProviderEnvVar } from "./discover.ts";
+import { getAccessToken } from "./gcp-alert.ts";
 import { ensureFreshOAuthToken } from "./oauth.ts";
 
 export interface BootstrapResult {
@@ -86,8 +87,13 @@ export async function bootstrapRealClients(): Promise<BootstrapResult> {
     gcp: new RealGcpLoggingClient(settings.gcp.projectId as string),
     prom: new RealPromClient({
       baseUrl: settings.prom.url,
-      ...(settings.prom.bearerToken && { bearerToken: settings.prom.bearerToken }),
-      ...(settings.prom.basicAuth && { basicAuth: settings.prom.basicAuth }),
+      ...(settings.prom.auth === "gcp"
+        ? { tokenProvider: getAccessToken }
+        : settings.prom.bearerToken
+          ? { bearerToken: settings.prom.bearerToken }
+          : settings.prom.basicAuth
+            ? { basicAuth: settings.prom.basicAuth }
+            : {}),
     }),
     jaeger: new RealJaegerClient({
       baseUrl: settings.jaeger.url,

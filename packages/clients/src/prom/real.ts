@@ -18,6 +18,13 @@ export interface RealPromClientOptions {
   baseUrl: string;
   bearerToken?: string;
   basicAuth?: { user: string; password: string };
+  /**
+   * Async token provider, called per request. Used for short-lived tokens
+   * (e.g. Google Managed Prometheus access tokens, default TTL 1h) so a
+   * single CLI run can keep working past expiry. Wins over `bearerToken`
+   * when both are set.
+   */
+  tokenProvider?: () => Promise<string>;
 }
 
 interface PromApiEnvelope<T> {
@@ -197,7 +204,7 @@ export class RealPromClient implements PromClient {
   private async get<T>(path: string, params: URLSearchParams, signal?: AbortSignal): Promise<T> {
     const url = `${this.baseUrl}${path}?${params.toString()}`;
     const res = await fetch(url, {
-      headers: this.headers(),
+      headers: await this.headers(),
       ...(signal !== undefined && { signal }),
     });
     if (!res.ok) {
@@ -211,9 +218,12 @@ export class RealPromClient implements PromClient {
     return env.data;
   }
 
-  private headers(): Record<string, string> {
+  private async headers(): Promise<Record<string, string>> {
     const h: Record<string, string> = { Accept: "application/json" };
-    if (this.opts.bearerToken) {
+    if (this.opts.tokenProvider) {
+      const token = await this.opts.tokenProvider();
+      h.Authorization = `Bearer ${token}`;
+    } else if (this.opts.bearerToken) {
       h.Authorization = `Bearer ${this.opts.bearerToken}`;
     } else if (this.opts.basicAuth) {
       const { user, password } = this.opts.basicAuth;
