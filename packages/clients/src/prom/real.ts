@@ -1,5 +1,18 @@
-import type { PromInstantResult, PromRuleState, PromSeriesResult } from "@opsremedy/core/types";
-import type { PromClient, PromInstantQuery, PromRangeQuery } from "../types.ts";
+import type {
+  PromInstantResult,
+  PromMetricMetadata,
+  PromRuleState,
+  PromSeriesResult,
+  PromTarget,
+} from "@opsremedy/core/types";
+import type {
+  PromClient,
+  PromInstantQuery,
+  PromMetadataQuery,
+  PromMetricsListQuery,
+  PromRangeQuery,
+  PromTargetsQuery,
+} from "../types.ts";
 
 export interface RealPromClientOptions {
   baseUrl: string;
@@ -40,6 +53,30 @@ interface PromRulesData {
       activeAt?: string;
     }>;
   }>;
+}
+
+/**
+ * `/api/v1/metadata` returns either Record<metric, MetadataItem[]> (vanilla
+ * Prom) or a flat array (some downstreams). We normalise to the array form.
+ */
+type PromMetadataRaw =
+  | Record<string, Array<{ type?: string; help?: string; unit?: string }>>
+  | Array<{ metric?: string; type?: string; help?: string; unit?: string }>;
+
+interface PromTargetRaw {
+  discoveredLabels?: Record<string, string>;
+  labels?: Record<string, string>;
+  scrapePool?: string;
+  scrapeUrl?: string;
+  globalUrl?: string;
+  lastError?: string;
+  lastScrape?: string;
+  health?: "up" | "down" | "unknown";
+}
+
+interface PromTargetsData {
+  activeTargets?: PromTargetRaw[];
+  droppedTargets?: PromTargetRaw[];
 }
 
 /**
@@ -106,6 +143,51 @@ export class RealPromClient implements PromClient {
     return out;
   }
 
+  async listMetrics(q: PromMetricsListQuery): Promise<string[]> {
+    // Prom + GMP both expose label values via /api/v1/label/<label>/values.
+    const data = await this.get<string[]>("/api/v1/label/__name__/values", new URLSearchParams(), q.signal);
+    let names = Array.isArray(data) ? data : [];
+    if (q.contains) {
+      const needle = q.contains.toLowerCase();
+      names = names.filter((n) => n.toLowerCase().includes(needle));
+    }
+    const limit = q.limit ?? 200;
+    return names.slice(0, limit);
+  }
+
+  async metricMetadata(q: PromMetadataQuery): Promise<PromMetricMetadata[]> {
+    const params = new URLSearchParams();
+    if (q.metric) params.set("metric", q.metric);
+    if (q.perMetricLimit !== undefined) params.set("limit_per_metric", String(q.perMetricLimit));
+    const data = await this.get<PromMetadataRaw>("/api/v1/metadata", params, q.signal);
+    return normaliseMetadata(data);
+  }
+
+  async targets(q: PromTargetsQuery): Promise<PromTarget[]> {
+    const params = new URLSearchParams();
+    params.set("state", q.state ?? "active");
+    const data = await this.get<PromTargetsData>("/api/v1/targets", params, q.signal);
+    const sources: PromTargetRaw[] = [];
+    if (data.activeTargets) sources.push(...data.activeTargets);
+    if (q.state === "dropped" || q.state === "any") {
+      if (data.droppedTargets) sources.push(...data.droppedTargets);
+    }
+    const out: PromTarget[] = sources.map((t) => {
+      const labels = t.labels ?? {};
+      const target: PromTarget = {
+        job: labels.job ?? t.scrapePool ?? "",
+        instance: labels.instance ?? "",
+        health: t.health ?? "unknown",
+        labels,
+      };
+      if (t.scrapeUrl !== undefined) target.scrapeUrl = t.scrapeUrl;
+      if (t.lastError !== undefined && t.lastError.length > 0) target.lastError = t.lastError;
+      if (t.lastScrape !== undefined) target.lastScrape = t.lastScrape;
+      return target;
+    });
+    return q.job ? out.filter((t) => t.job === q.job) : out;
+  }
+
   uiUrl(kind: "graph" | "alerts", query?: string): string {
     if (kind === "alerts") return `${this.baseUrl}/alerts`;
     if (!query) return `${this.baseUrl}/graph`;
@@ -139,6 +221,33 @@ export class RealPromClient implements PromClient {
     }
     return h;
   }
+}
+
+function normaliseMetadata(raw: PromMetadataRaw): PromMetricMetadata[] {
+  const out: PromMetricMetadata[] = [];
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (!item.metric) continue;
+      out.push({
+        metric: item.metric,
+        type: (item.type ?? "unknown") as PromMetricMetadata["type"],
+        help: item.help ?? "",
+        ...(item.unit !== undefined && item.unit.length > 0 && { unit: item.unit }),
+      });
+    }
+    return out;
+  }
+  for (const [metric, items] of Object.entries(raw)) {
+    const first = items?.[0];
+    if (!first) continue;
+    out.push({
+      metric,
+      type: (first.type ?? "unknown") as PromMetricMetadata["type"],
+      help: first.help ?? "",
+      ...(first.unit !== undefined && first.unit.length > 0 && { unit: first.unit }),
+    });
+  }
+  return out;
 }
 
 function pickInstantSample(s: { value?: [number, string]; values?: Array<[number, string]> }): {

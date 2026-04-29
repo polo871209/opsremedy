@@ -116,3 +116,4 @@ See [`AGENTS.md`](./AGENTS.md) for development conventions.
 - [`googleapis/gcloud-mcp`](https://github.com/googleapis/gcloud-mcp) — tool-design reference.
 - [`JuliusBrussee/caveman`](https://github.com/JuliusBrussee/caveman) — prompt-compression reference.
 - [`k8sgpt-ai/k8sgpt`](https://github.com/k8sgpt-ai/k8sgpt) — deterministic k8s analyzer + failure-catalog reference.
+- [`pab1it0/prometheus-mcp-server`](https://github.com/pab1it0/prometheus-mcp-server) — Prometheus discovery-tool reference.

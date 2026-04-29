@@ -35,6 +35,15 @@ const THROWING: ClientRegistry = {
     async alertRules() {
       throw new Error("Prom client not configured");
     },
+    async listMetrics() {
+      throw new Error("Prom client not configured");
+    },
+    async metricMetadata() {
+      throw new Error("Prom client not configured");
+    },
+    async targets() {
+      throw new Error("Prom client not configured");
+    },
     uiUrl() {
       return undefined;
     },

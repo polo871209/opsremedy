@@ -1,11 +1,27 @@
-import type { PromInstantResult, PromRuleState, PromSeriesResult } from "@opsremedy/core/types";
-import type { PromClient, PromInstantQuery, PromRangeQuery } from "../types.ts";
+import type {
+  PromInstantResult,
+  PromMetricMetadata,
+  PromRuleState,
+  PromSeriesResult,
+  PromTarget,
+} from "@opsremedy/core/types";
+import type {
+  PromClient,
+  PromInstantQuery,
+  PromMetadataQuery,
+  PromMetricsListQuery,
+  PromRangeQuery,
+  PromTargetsQuery,
+} from "../types.ts";
 
 export interface FixturePromPayload {
   /** Keyed by exact PromQL query string. */
   instant?: Record<string, PromInstantResult>;
   range?: Record<string, PromSeriesResult>;
   alertRules?: PromRuleState[];
+  metrics?: string[];
+  metadata?: PromMetricMetadata[];
+  targets?: PromTarget[];
 }
 
 const EMPTY_INSTANT: PromInstantResult = { resultType: "vector", series: [] };
@@ -29,6 +45,25 @@ export class FixturePromClient implements PromClient {
 
   async alertRules(): Promise<PromRuleState[]> {
     return this.data.alertRules ?? [];
+  }
+
+  async listMetrics(q: PromMetricsListQuery): Promise<string[]> {
+    let names = this.data.metrics ?? [];
+    if (q.contains) {
+      const needle = q.contains.toLowerCase();
+      names = names.filter((n) => n.toLowerCase().includes(needle));
+    }
+    return names.slice(0, q.limit ?? 200);
+  }
+
+  async metricMetadata(q: PromMetadataQuery): Promise<PromMetricMetadata[]> {
+    const all = this.data.metadata ?? [];
+    return q.metric ? all.filter((m) => m.metric === q.metric) : all;
+  }
+
+  async targets(q: PromTargetsQuery): Promise<PromTarget[]> {
+    const all = this.data.targets ?? [];
+    return q.job ? all.filter((t) => t.job === q.job) : all;
   }
 
   uiUrl(): undefined {

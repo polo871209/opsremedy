@@ -54,6 +54,32 @@ export interface PromRuleState {
   lastTransition?: number;
 }
 
+/**
+ * Per-metric metadata from Prometheus `/api/v1/metadata`. Same shape across
+ * vanilla Prom + Google Managed Prometheus. Lets the LLM tell counter from
+ * gauge from histogram before writing rate() over a gauge.
+ */
+export interface PromMetricMetadata {
+  metric: string;
+  type: "counter" | "gauge" | "histogram" | "summary" | "untyped" | "info" | "stateset" | "unknown";
+  help: string;
+  unit?: string;
+}
+
+/**
+ * Scrape target health from Prometheus `/api/v1/targets`. Single entry per
+ * (job, instance). `lastError` is empty when the target is healthy.
+ */
+export interface PromTarget {
+  job: string;
+  instance: string;
+  health: "up" | "down" | "unknown";
+  scrapeUrl?: string;
+  lastError?: string;
+  lastScrape?: string;
+  labels: Record<string, string>;
+}
+
 export interface TraceSummary {
   traceId: string;
   rootService: string;
@@ -189,6 +215,9 @@ export interface Evidence {
   prom_instant?: Record<string, PromInstantResult>;
   prom_series?: Record<string, PromSeriesResult>;
   prom_alert_rules?: PromRuleState[];
+  prom_metrics?: string[];
+  prom_metric_metadata?: PromMetricMetadata[];
+  prom_targets?: PromTarget[];
 
   jaeger_traces?: TraceSummary[];
   jaeger_service_deps?: ServiceDep[];
@@ -312,6 +341,9 @@ export const ALL_EVIDENCE_KEYS = [
   "prom_instant",
   "prom_series",
   "prom_alert_rules",
+  "prom_metrics",
+  "prom_metric_metadata",
+  "prom_targets",
   "jaeger_traces",
   "jaeger_service_deps",
   "k8s_pods",

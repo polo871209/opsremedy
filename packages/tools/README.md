@@ -1,6 +1,6 @@
 # @opsremedy/tools
 
-The 14 read-only tools the gather agent calls. Each is a pi-mono `AgentTool`
+The 17 read-only tools the gather agent calls. Each is a pi-mono `AgentTool`
 factory that takes the `InvestigationContext` and returns a tool with a
 TypeBox parameter schema.
 
@@ -13,6 +13,9 @@ TypeBox parameter schema.
 | `query_prom_instant` | PromQL at a single timestamp |
 | `query_prom_range` | PromQL over a window (range query) |
 | `get_prom_alert_rules` | List alerting rules + state |
+| `list_prom_metrics` | Discover metric names by substring (resolves "no series returned" before guessing labels) |
+| `get_prom_metric_metadata` | Metric type/help/unit (counter vs gauge vs histogram) |
+| `get_prom_targets` | Scrape target health (up/down + lastError); empty under Google Managed Prometheus |
 | `query_jaeger_traces` | Find traces for a service |
 | `get_jaeger_service_deps` | Upstream/downstream edges |
 | `k8s_cluster_info` | Cluster-level facts: node ready count + namespace list |

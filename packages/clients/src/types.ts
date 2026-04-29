@@ -3,8 +3,10 @@ import type {
   LogEntry,
   PodSummary,
   PromInstantResult,
+  PromMetricMetadata,
   PromRuleState,
   PromSeriesResult,
+  PromTarget,
   ServiceDep,
   TraceSummary,
 } from "@opsremedy/core/types";
@@ -50,10 +52,40 @@ export interface PromRangeQuery {
   signal?: AbortSignal;
 }
 
+export interface PromMetricsListQuery {
+  /** Optional case-insensitive substring filter applied to metric names. */
+  contains?: string;
+  /** Cap returned names; defaults to 200. */
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+export interface PromMetadataQuery {
+  /** When set, return only metadata for this metric name. */
+  metric?: string;
+  /** Per-metric metadata limit returned by Prom (defaults to 1). */
+  perMetricLimit?: number;
+  signal?: AbortSignal;
+}
+
+export interface PromTargetsQuery {
+  /** When set, return only targets whose `job` label matches. */
+  job?: string;
+  /** When "active"|"dropped"|"any" — defaults to "active". */
+  state?: "active" | "dropped" | "any";
+  signal?: AbortSignal;
+}
+
 export interface PromClient {
   instant(q: PromInstantQuery): Promise<PromInstantResult>;
   range(q: PromRangeQuery): Promise<PromSeriesResult>;
   alertRules(signal?: AbortSignal): Promise<PromRuleState[]>;
+  /** List metric names known to the server (`/api/v1/label/__name__/values`). */
+  listMetrics(q: PromMetricsListQuery): Promise<string[]>;
+  /** Per-metric metadata: type/help/unit (`/api/v1/metadata`). */
+  metricMetadata(q: PromMetadataQuery): Promise<PromMetricMetadata[]>;
+  /** Scrape target health (`/api/v1/targets`). */
+  targets(q: PromTargetsQuery): Promise<PromTarget[]>;
   /** UI URL for a query in /graph; falls back to the bare /graph or /alerts. */
   uiUrl(kind: "graph" | "alerts", query?: string): string | undefined;
 }

@@ -6,6 +6,9 @@ export const ALL_TOOL_NAMES = [
   "query_prom_instant",
   "query_prom_range",
   "get_prom_alert_rules",
+  "list_prom_metrics",
+  "get_prom_metric_metadata",
+  "get_prom_targets",
   "query_jaeger_traces",
   "get_jaeger_service_deps",
   "k8s_cluster_info",
@@ -34,6 +37,11 @@ const K8S_TOOLS: ToolName[] = [
   "k8s_triage_pod",
 ];
 const TRACE_TOOLS: ToolName[] = ["query_jaeger_traces", "get_jaeger_service_deps"];
+const PROM_DISCOVERY_TOOLS: ToolName[] = [
+  "list_prom_metrics",
+  "get_prom_metric_metadata",
+  "get_prom_targets",
+];
 
 export function planGatherTools(alert: Alert, loop: number, rerouteHint?: string): GatherPlanAudit {
   if (loop > 0 || rerouteHint) return selectAll("reroute can need any source", loop);
@@ -48,6 +56,11 @@ export function planGatherTools(alert: Alert, loop: number, rerouteHint?: string
 
   if (hasTraceSignal(text, alert.labels)) {
     for (const tool of TRACE_TOOLS) selected.set(tool, "alert contains service/latency/dependency signal");
+  }
+
+  if (hasMetricSignal(text)) {
+    for (const tool of PROM_DISCOVERY_TOOLS)
+      selected.set(tool, "metric/rate alert benefits from Prom discovery (names, types, scrape health)");
   }
 
   if (hasInfraSignal(text)) selected.set("query_prom_instant", "alert asks for current infra state");
