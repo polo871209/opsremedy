@@ -80,6 +80,13 @@ export interface PodSummary {
   /** Reason from the last terminated container state if any (e.g. OOMKilled). */
   lastTerminationReason?: string;
   node?: string;
+  /**
+   * Top-level owner workload, resolved by walking ownerReferences (e.g.
+   * "Deployment/payments-api"). Lets evidence + Lark cards collapse pod
+   * lists to the workload that actually matters. Optional: not populated
+   * when the pod has no owner or the walk hit a kind we don't recognize.
+   */
+  owner?: string;
 }
 
 export interface EventSummary {

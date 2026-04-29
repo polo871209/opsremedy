@@ -7,6 +7,7 @@ import type {
   K8sListPodsQuery,
   K8sLogsQuery,
 } from "../types.ts";
+import { resolvePodOwner } from "./parent.ts";
 
 export interface RealK8sClientOptions {
   /** Path to kubeconfig. If unset, falls back to KUBECONFIG env or default loaders. */
@@ -45,7 +46,18 @@ export class RealK8sClient implements K8sClient {
       ...(q.labelSelector !== undefined && { labelSelector: q.labelSelector }),
       ...(q.fieldSelector !== undefined && { fieldSelector: q.fieldSelector }),
     });
-    return (list.items ?? []).map(toPodSummary);
+    const items = list.items ?? [];
+    const summaries = items.map(toPodSummary);
+    // Resolve owners in parallel; failures fall back to first ownerRef.
+    const apis = { apps: this.apps, batch: this.batch };
+    const owners = await Promise.all(
+      items.map((pod) => resolvePodOwner(pod as { metadata?: V1Pod["metadata"] }, apis)),
+    );
+    for (let i = 0; i < summaries.length; i++) {
+      const o = owners[i];
+      if (o) summaries[i] = { ...summaries[i], owner: o } as PodSummary;
+    }
+    return summaries;
   }
 
   async describe(q: K8sDescribeQuery): Promise<string> {
@@ -113,8 +125,13 @@ interface V1ContainerStatus {
   lastState?: { terminated?: V1ContainerStateTerminated };
   state?: { terminated?: V1ContainerStateTerminated; waiting?: { reason?: string } };
 }
+interface V1OwnerRef {
+  kind?: string;
+  name?: string;
+  controller?: boolean;
+}
 interface V1Pod {
-  metadata?: { name?: string; namespace?: string };
+  metadata?: { name?: string; namespace?: string; ownerReferences?: V1OwnerRef[] };
   spec?: { nodeName?: string };
   status?: { phase?: string; containerStatuses?: V1ContainerStatus[] };
 }

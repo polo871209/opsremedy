@@ -1,18 +1,6 @@
 import type { Alert, Evidence, RCAReport, ValidatedClaim } from "../types.ts";
 import { ZERO_USAGE } from "../types.ts";
-
-/** k8s waiting reasons that mean a pod is actively broken right now. */
-const UNHEALTHY_WAITING_REASONS = new Set([
-  "CrashLoopBackOff",
-  "ImagePullBackOff",
-  "ErrImagePull",
-  "OOMKilled",
-  "CreateContainerConfigError",
-  "InvalidImageName",
-]);
-
-/** Severity strings emitted by GCP Logging that we treat as error-level. */
-const ERROR_SEVERITIES = new Set(["ERROR", "CRITICAL", "ALERT", "EMERGENCY"]);
+import { ERROR_LOG_SEVERITIES, UNHEALTHY_CONTAINER_REASONS } from "./checks.ts";
 
 export interface HealthVerdict {
   healthy: boolean;
@@ -44,7 +32,7 @@ export function isClearlyHealthy(alert: Alert, ev: Evidence): HealthVerdict {
     return { healthy: false, reason: "alert is not informational/health-style" };
   }
 
-  if ((ev.gcp_logs ?? []).some((e) => ERROR_SEVERITIES.has(e.severity))) {
+  if ((ev.gcp_logs ?? []).some((e) => ERROR_LOG_SEVERITIES.has(e.severity))) {
     return { healthy: false, reason: "gcp_logs contain ERROR-or-higher entries" };
   }
   if ((ev.gcp_error_logs ?? []).length > 0) {
@@ -63,7 +51,7 @@ export function isClearlyHealthy(alert: Alert, ev: Evidence): HealthVerdict {
     (ev.k8s_pods ?? []).some(
       (p) =>
         (!p.ready && p.phase !== "Succeeded") ||
-        (p.lastTerminationReason !== undefined && UNHEALTHY_WAITING_REASONS.has(p.lastTerminationReason)),
+        (p.lastTerminationReason !== undefined && UNHEALTHY_CONTAINER_REASONS.has(p.lastTerminationReason)),
     )
   ) {
     return { healthy: false, reason: "k8s_pods contain not-ready or unhealthy-terminated pods" };

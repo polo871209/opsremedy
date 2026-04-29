@@ -31,11 +31,13 @@ export function makeK8sListPodsTool(ctx: InvestigationContext): AgentTool {
       appendEvidence(ctx, "k8s_pods", pods);
 
       const unhealthy = pods.filter((p) => !p.ready || p.phase !== "Running").length;
+      const owners = [...new Set(pods.map((p) => p.owner).filter((o): o is string => !!o))];
       const summary =
         pods.length === 0
           ? `No pods found in ${params.namespace} matching selector.`
           : `Got ${pods.length} pods (${unhealthy} not ready). ` +
             `Phases: ${[...new Set(pods.map((p) => p.phase))].join(",")}. ` +
+            (owners.length > 0 ? `Owners: ${owners.slice(0, 4).join(", ")}. ` : "") +
             `Notable: ${
               pods
                 .filter((p) => p.lastTerminationReason)

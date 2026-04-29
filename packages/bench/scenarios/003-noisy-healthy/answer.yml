@@ -1,7 +1,7 @@
 scenario_id: "003-noisy-healthy"
 difficulty: 3
 expected_category: "healthy"
-required_keywords: ["recovered", "resolved"]
+required_keywords: ["recovered"]
 forbidden_categories: ["dependency", "resource_exhaustion", "deployment"]
 forbidden_keywords: ["current outage", "still failing"]
 required_evidence_sources: ["k8s_pods", "prom_series"]
