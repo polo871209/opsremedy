@@ -114,3 +114,4 @@ See [`AGENTS.md`](./AGENTS.md) for development conventions.
 ## References
 
 - [`googleapis/gcloud-mcp`](https://github.com/googleapis/gcloud-mcp) — tool-design reference.
+- [`JuliusBrussee/caveman`](https://github.com/JuliusBrussee/caveman) — prompt-compression reference.

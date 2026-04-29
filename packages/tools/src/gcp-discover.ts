@@ -16,24 +16,20 @@ export function makeGcpDiscoverTool(ctx: InvestigationContext): AgentTool {
     name: "discover_gcp_log_resources",
     label: "Discover GCP log resource scopes",
     description:
-      "Run a small sample query against Cloud Logging in the alert window and " +
-      "return the most common `resource.type` values, namespaces, pod/container " +
-      "names, log names, and severity counts that actually exist.\n" +
-      "Call this FIRST when you don't already know which `resource.type` or " +
-      "labels carry the relevant logs. Use the returned values to build a " +
-      "precise `query_gcp_logs` filter on the next step.\n" +
-      "Time window is set by the program (around the alert). Do NOT add " +
-      "timestamp predicates. The pre-filter is optional — leave it empty for a " +
-      "broad sweep, or pass a coarse predicate like " +
-      '`resource.labels.namespace_name="payments"` when you already know the ' +
-      "namespace.",
+      "Sample Cloud Logging in alert window. Returns top `resource.type` values, " +
+      "namespaces, pod/container names, log names, severity counts that actually exist.\n" +
+      "Call FIRST when you don't know which `resource.type` or labels carry the " +
+      "relevant logs. Use returned values to build a precise `query_gcp_logs` filter.\n" +
+      "Window set by program. Do NOT add timestamp predicates. Pre-filter optional — " +
+      "leave empty for broad sweep, or pass coarse predicate like " +
+      '`resource.labels.namespace_name="payments"` when namespace already known.',
     parameters: Type.Object({
       pre_filter: Type.Optional(
         Type.String({
           description:
-            "Optional Cloud Logging filter to narrow the sample (e.g. " +
-            'resource.labels.namespace_name="payments"). Leave empty for a ' +
-            "broad sweep. Do NOT include timestamps; the program supplies the window.",
+            "Optional filter to narrow sample (e.g. " +
+            'resource.labels.namespace_name="payments"). Empty = broad sweep. ' +
+            "No timestamp predicates — program supplies window.",
         }),
       ),
       sample_size: Type.Optional(
@@ -41,7 +37,7 @@ export function makeGcpDiscoverTool(ctx: InvestigationContext): AgentTool {
           minimum: 50,
           maximum: 500,
           default: 200,
-          description: "How many recent entries to sample for aggregation.",
+          description: "Recent entries to sample for aggregation.",
         }),
       ),
       time_window_minutes: Type.Optional(Type.Number({ minimum: 1, maximum: 180, default: 30 })),
@@ -76,7 +72,7 @@ export function makeGcpDiscoverTool(ctx: InvestigationContext): AgentTool {
 
       if (entries.length === 0) {
         return {
-          summary: `${head}. No logs in window. Try a broader pre_filter or check that logs are actually being ingested for this project.`,
+          summary: `${head}. No logs in window. Broaden pre_filter or check log ingestion for this project.`,
           details,
         };
       }

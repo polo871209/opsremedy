@@ -20,31 +20,24 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
     name: "query_gcp_logs",
     label: "Query GCP Cloud Logging",
     description:
-      "Search GCP Cloud Logging across the incident window. The window is set by " +
-      "the program (alert.fired_at - lead-in to alert.closed_at). Do NOT add " +
-      "timestamp predicates to your filter.\n" +
-      "BEFORE writing a filter: if you don't already know which `resource.type` " +
-      "or labels carry the relevant logs, call `discover_gcp_log_resources` " +
-      "first. It returns the actual top resource types, namespaces, pod names, " +
-      "and severity counts in this window so you don't have to guess.\n" +
-      "IMPORTANT: `resource.type` must be a Cloud Logging resource type, NOT the " +
-      "alert's metric resource type. The alert's `annotations.resource_type` " +
-      "(e.g. `prometheus_target`, `k8s_pod`, `gce_instance`) describes the metric " +
-      "source and is usually NOT a valid logs resource type. For workload logs use " +
-      '`resource.type="k8s_container"` (most common) or `k8s_pod`; for node-level ' +
-      "logs use `k8s_node`. Filter further with `resource.labels.namespace_name`, " +
-      "`resource.labels.pod_name`, `resource.labels.container_name`.\n" +
-      "SEVERITY: don't restrict to ERROR by default. Many real incidents log at " +
-      "WARNING (graceful-shutdown notices, retry warnings, istio access logs). " +
-      "Start with `severity>=WARNING`; only narrow to `severity>=ERROR` after a " +
-      "first pass. If a previous query returned entries with empty content, " +
-      "retry without the severity filter so application INFO logs are included.\n" +
-      "AFTER finding the failing pod's namespace/name from k8s tools, drill into " +
-      "its container logs directly: " +
+      "Search Cloud Logging in alert window. Window set by program — do NOT add " +
+      "timestamp predicates.\n" +
+      "Don't know which `resource.type` or labels carry the logs? Call " +
+      "`discover_gcp_log_resources` first.\n" +
+      "Hard rule: `resource.type` must be a Cloud Logging resource type, NOT the " +
+      "alert's metric resource type. `annotations.resource_type` (e.g. " +
+      "`prometheus_target`, `k8s_pod`, `gce_instance`) is metric-side; usually " +
+      'NOT a valid logs type. Workload logs → `resource.type="k8s_container"` ' +
+      "(common) or `k8s_pod`. Node-level → `k8s_node`. Narrow with " +
+      "`resource.labels.namespace_name`, `pod_name`, `container_name`.\n" +
+      "Severity: don't restrict to ERROR by default. Real incidents often log at " +
+      "WARNING (graceful-shutdown, retry, istio access). Start `severity>=WARNING`; " +
+      "narrow to ERROR after first pass. Empty content from previous query → drop " +
+      "severity filter so INFO logs included.\n" +
+      "After k8s tools surface the failing pod, drill straight into its container: " +
       '`resource.type="k8s_container" AND resource.labels.namespace_name="<ns>" ' +
-      'AND resource.labels.pod_name="<pod>"`. The istio sidecar lives next to ' +
-      'the app container; filter `container_name="<app>"` to skip mesh noise.\n' +
-      'Prefer targeted filters (severity, resource.labels.pod_name, resource.labels.namespace_name, textPayload:"..."). ' +
+      'AND resource.labels.pod_name="<pod>"`. Istio sidecar sits next to app; ' +
+      'add `container_name="<app>"` to skip mesh noise.\n' +
       "Examples:\n" +
       '- resource.type="k8s_container" AND resource.labels.namespace_name="my-ns" AND severity>=WARNING\n' +
       '- resource.type="k8s_container" AND resource.labels.pod_name="my-pod" AND resource.labels.container_name="app"\n' +
@@ -56,7 +49,7 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
           minimum: 1,
           maximum: 180,
           default: 30,
-          description: "Minutes before alert.fired_at to include (a 5-min lead-in is added on top).",
+          description: "Minutes before alert.fired_at to include (5-min lead-in added on top).",
         }),
       ),
       max_results: Type.Optional(Type.Number({ minimum: 1, maximum: 200, default: 50 })),
@@ -119,15 +112,15 @@ export function makeGcpLogsTool(ctx: InvestigationContext): AgentTool {
       let summary: string;
       if (entries.length === 0) {
         summary =
-          `${queryLine}\nNo logs matched. If you guessed at resource.type or labels, call ` +
-          "discover_gcp_log_resources to see what actually exists in this window before retrying. " +
-          "Also try widening to severity>=WARNING — many incidents log warnings rather than errors.";
+          `${queryLine}\nNo logs matched. Guessed resource.type/labels? Call ` +
+          "discover_gcp_log_resources first. Also try severity>=WARNING — many " +
+          "incidents log warnings, not errors.";
       } else if (blankPreviews) {
         summary =
-          `${queryLine}\nFetched ${counts} but all textPreviews are empty (likely structured ` +
-          "jsonPayload without a `message` field, e.g. istio access logs). Retry with a more " +
-          "specific filter — narrow to the failing app's namespace/pod/container, drop the " +
-          "severity floor (or set severity>=WARNING), or filter by a specific field like " +
+          `${queryLine}\nFetched ${counts} but all textPreviews empty (structured ` +
+          "jsonPayload without `message` field, e.g. istio access logs). Retry with " +
+          "tighter filter — narrow to failing app's namespace/pod/container, drop " +
+          "severity floor (or use severity>=WARNING), or pin a field like " +
           "`jsonPayload.response_code>=500`.";
       } else {
         summary = `${queryLine}\nFetched ${counts}. Top: ${topMessages}`;
