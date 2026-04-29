@@ -63,6 +63,9 @@ const THROWING: ClientRegistry = {
     async podLogs() {
       throw new Error("K8s client not configured");
     },
+    async clusterInfo() {
+      throw new Error("K8s client not configured");
+    },
   },
 };
 

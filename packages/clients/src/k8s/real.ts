@@ -1,6 +1,7 @@
 import { AppsV1Api, BatchV1Api, CoreV1Api, KubeConfig } from "@kubernetes/client-node";
 import type { EventSummary, PodSummary } from "@opsremedy/core/types";
 import type {
+  ClusterInfo,
   K8sClient,
   K8sDescribeQuery,
   K8sEventsQuery,
@@ -96,6 +97,19 @@ export class RealK8sClient implements K8sClient {
       ...(q.fieldSelector !== undefined && { fieldSelector: q.fieldSelector }),
     });
     return (list.items ?? []).map(toEventSummary);
+  }
+
+  async clusterInfo(_signal?: AbortSignal): Promise<ClusterInfo> {
+    const [nodeList, nsList] = await Promise.all([this.core.listNode({}), this.core.listNamespace({})]);
+    const nodes = nodeList.items ?? [];
+    const ready = nodes.filter((n) => {
+      const conds = (n as V1Node).status?.conditions ?? [];
+      return conds.some((c) => c.type === "Ready" && c.status === "True");
+    }).length;
+    const namespaces = (nsList.items ?? [])
+      .map((n) => (n as V1Workload).metadata?.name ?? "")
+      .filter((s) => s.length > 0);
+    return { nodes: { total: nodes.length, ready }, namespaces };
   }
 
   async podLogs(q: K8sLogsQuery): Promise<string[]> {

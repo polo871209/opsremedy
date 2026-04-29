@@ -8,10 +8,12 @@ export const ALL_TOOL_NAMES = [
   "get_prom_alert_rules",
   "query_jaeger_traces",
   "get_jaeger_service_deps",
+  "k8s_cluster_info",
   "k8s_get_pods",
   "k8s_describe",
   "k8s_get_events",
   "k8s_pod_logs",
+  "k8s_triage_pod",
   "propose_remediation",
 ] as const;
 
@@ -24,7 +26,13 @@ const BASE_TOOLS: ToolName[] = [
   "get_prom_alert_rules",
   "propose_remediation",
 ];
-const K8S_TOOLS: ToolName[] = ["k8s_get_pods", "k8s_describe", "k8s_get_events", "k8s_pod_logs"];
+const K8S_TOOLS: ToolName[] = [
+  "k8s_get_pods",
+  "k8s_describe",
+  "k8s_get_events",
+  "k8s_pod_logs",
+  "k8s_triage_pod",
+];
 const TRACE_TOOLS: ToolName[] = ["query_jaeger_traces", "get_jaeger_service_deps"];
 
 export function planGatherTools(alert: Alert, loop: number, rerouteHint?: string): GatherPlanAudit {

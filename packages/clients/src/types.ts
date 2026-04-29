@@ -122,11 +122,24 @@ export interface K8sLogsQuery {
   signal?: AbortSignal;
 }
 
+/**
+ * Coarse cluster-level facts. Used by `k8s_cluster_info` to give the
+ * gather agent cheap context (node health summary + namespace list)
+ * without spending a tool call per kind. Server version omitted to
+ * keep the call cheap and to avoid pulling another API client.
+ */
+export interface ClusterInfo {
+  nodes: { total: number; ready: number };
+  namespaces: string[];
+}
+
 export interface K8sClient {
   listPods(q: K8sListPodsQuery): Promise<PodSummary[]>;
   describe(q: K8sDescribeQuery): Promise<string>;
   events(q: K8sEventsQuery): Promise<EventSummary[]>;
   podLogs(q: K8sLogsQuery): Promise<string[]>;
+  /** Return server version + node + namespace summary. */
+  clusterInfo(signal?: AbortSignal): Promise<ClusterInfo>;
 }
 
 // ---------------- Registry ----------------

@@ -93,18 +93,36 @@ export function makeK8sEventsTool(ctx: InvestigationContext): AgentTool {
     name: "k8s_get_events",
     label: "Kubernetes events",
     description:
-      "List recent events in a namespace, optionally filtered by field selector (e.g. " +
-      "involvedObject.name=my-pod). Events surface scheduling failures, OOMKilled, BackOff, etc.",
+      "List recent events in a namespace. Surface scheduling failures, OOMKilled, " +
+      "BackOff, FailedMount, ProvisioningFailed, Unhealthy. Pass `object_name` " +
+      "(and optional `object_kind`) to scope events to one resource — preferred " +
+      "over hand-writing `field_selector`. Use `field_selector` only for advanced " +
+      "selectors not covered by object_*.",
     parameters: Type.Object({
       namespace: Type.String(),
-      field_selector: Type.Optional(Type.String()),
+      object_name: Type.Optional(
+        Type.String({
+          description: "Filter to events whose involvedObject.name matches.",
+        }),
+      ),
+      object_kind: Type.Optional(
+        Type.String({
+          description: "Filter to events whose involvedObject.kind matches (Pod, Deployment, ...).",
+        }),
+      ),
+      field_selector: Type.Optional(
+        Type.String({
+          description: "Raw field selector. Ignored when object_name is set.",
+        }),
+      ),
       intent: Type.Optional(IntentObject),
     }),
     ctx,
     run: async (params, signal) => {
+      const fieldSelector = buildEventFieldSelector(params);
       const all = await getClients().k8s.events({
         namespace: params.namespace,
-        ...(params.field_selector !== undefined && { fieldSelector: params.field_selector }),
+        ...(fieldSelector !== undefined && { fieldSelector }),
         ...(signal !== undefined && { signal }),
       });
       const limit = params.intent?.limit;
@@ -113,13 +131,29 @@ export function makeK8sEventsTool(ctx: InvestigationContext): AgentTool {
 
       const warnings = events.filter((e) => e.type === "Warning").length;
       const topReasons = [...new Set(events.map((e) => e.reason))].slice(0, 5).join(", ");
+      const scope = params.object_name
+        ? `${params.object_kind ? `${params.object_kind}/` : ""}${params.object_name} in ${params.namespace}`
+        : `namespace ${params.namespace}`;
       const summary =
         events.length === 0
-          ? `No events in namespace ${params.namespace}.`
-          : `Got ${events.length} events (${warnings} warnings). Reasons: ${topReasons}`;
-      return { summary, details: { count: events.length, warnings } };
+          ? `No events in ${scope}.`
+          : `Got ${events.length} events for ${scope} (${warnings} warnings). Reasons: ${topReasons}`;
+      return { summary, details: { count: events.length, warnings, fieldSelector } };
     },
   });
+}
+
+function buildEventFieldSelector(params: {
+  object_name?: string;
+  object_kind?: string;
+  field_selector?: string;
+}): string | undefined {
+  if (params.object_name) {
+    const parts = [`involvedObject.name=${params.object_name}`];
+    if (params.object_kind) parts.push(`involvedObject.kind=${params.object_kind}`);
+    return parts.join(",");
+  }
+  return params.field_selector;
 }
 
 export function makeK8sPodLogsTool(ctx: InvestigationContext): AgentTool {

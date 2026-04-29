@@ -1,6 +1,6 @@
 # @opsremedy/tools
 
-The 12 read-only tools the gather agent calls. Each is a pi-mono `AgentTool`
+The 14 read-only tools the gather agent calls. Each is a pi-mono `AgentTool`
 factory that takes the `InvestigationContext` and returns a tool with a
 TypeBox parameter schema.
 
@@ -15,10 +15,12 @@ TypeBox parameter schema.
 | `get_prom_alert_rules` | List alerting rules + state |
 | `query_jaeger_traces` | Find traces for a service |
 | `get_jaeger_service_deps` | Upstream/downstream edges |
-| `k8s_get_pods` | List pods in a namespace |
+| `k8s_cluster_info` | Cluster-level facts: node ready count + namespace list |
+| `k8s_get_pods` | List pods in a namespace (incl. owner workload) |
 | `k8s_describe` | `kubectl describe` equivalent |
-| `k8s_get_events` | Namespace events |
-| `k8s_pod_logs` | Tail container logs |
+| `k8s_get_events` | Namespace events; pass `object_name`/`object_kind` to scope |
+| `k8s_pod_logs` | Tail container logs (supports `previous` for crash-loops) |
+| `k8s_triage_pod` | One-shot: describe + events + logs for a single pod (replaces 3-4 calls) |
 | `propose_remediation` | Record a dry-run fix (never executes) |
 
 ## defineTool contract

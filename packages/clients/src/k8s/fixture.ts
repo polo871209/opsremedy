@@ -1,5 +1,6 @@
 import type { EventSummary, PodSummary } from "@opsremedy/core/types";
 import type {
+  ClusterInfo,
   K8sClient,
   K8sDescribeQuery,
   K8sEventsQuery,
@@ -12,6 +13,7 @@ export interface FixtureK8sPayload {
   events?: Record<string, EventSummary[]>; // keyed by namespace
   describe?: Record<string, string>; // key: `${kind}/${name}` or `${kind}/${name}@${namespace}`
   logs?: Record<string, string[]>; // key: `${namespace}/${pod}` or `${namespace}/${pod}/${container}`
+  cluster?: ClusterInfo;
 }
 
 export class FixtureK8sClient implements K8sClient {
@@ -32,6 +34,15 @@ export class FixtureK8sClient implements K8sClient {
 
   async events(q: K8sEventsQuery): Promise<EventSummary[]> {
     return this.data.events?.[q.namespace] ?? [];
+  }
+
+  async clusterInfo(): Promise<ClusterInfo> {
+    return (
+      this.data.cluster ?? {
+        nodes: { total: 0, ready: 0 },
+        namespaces: Object.keys(this.data.pods ?? {}).sort(),
+      }
+    );
   }
 
   async podLogs(q: K8sLogsQuery): Promise<string[]> {
