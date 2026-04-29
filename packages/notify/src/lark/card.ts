@@ -1,4 +1,10 @@
-import type { Alert, RCAReport, RemediationProposal, ValidatedClaim } from "@opsremedy/core/types";
+import type {
+  Alert,
+  RCAReport,
+  RemediationProposal,
+  ResourceFinding,
+  ValidatedClaim,
+} from "@opsremedy/core/types";
 import type { CardElement, CardEnvelope } from "../types.ts";
 import { colorFor } from "./colors.ts";
 import { capList, jsonByteSize, truncate } from "./truncate.ts";
@@ -10,6 +16,7 @@ const ROOT_CAUSE_MAX = 1500;
 const CAUSAL_CHAIN_MAX = 8;
 const CLAIMS_MAX = 8;
 const UNVERIFIED_MAX = 5;
+const FINDINGS_MAX = 8;
 const COMMAND_MAX = 200;
 
 /**
@@ -73,6 +80,13 @@ function assembleElements(report: RCAReport, alert: Alert, opts: BuildOpts, leve
     tag: "markdown",
     content: causalChainSection(report.causal_chain, level),
   });
+
+  // Findings ranks above claims so the "what's broken right now" table is
+  // visible first when a structured analyzer found anything.
+  if (report.findings && report.findings.length > 0 && level < 3) {
+    els.push({ tag: "hr" });
+    els.push({ tag: "markdown", content: findingsSection(report.findings, level) });
+  }
 
   if (report.validated_claims.length > 0) {
     els.push({ tag: "hr" });
@@ -192,6 +206,19 @@ function renderSources(sources: string[], links: EvidenceLinks): string {
 /** Escape characters CommonMark treats as link-syntax terminators. */
 function escapeMarkdownUrl(url: string): string {
   return url.replace(/\(/g, "%28").replace(/\)/g, "%29");
+}
+
+function findingsSection(findings: ResourceFinding[], level: number): string {
+  // Level 2: cap to 4 entries; level 0-1: 8.
+  const max = level >= 2 ? 4 : FINDINGS_MAX;
+  const { kept, overflow } = capList(findings, max);
+  const lines = kept.map((f) => {
+    const head = f.parent ? `**${f.parent}**` : `**${f.kind}/${f.name}**`;
+    const ns = f.namespace ? ` _(ns: ${f.namespace})_` : "";
+    return `- ${head}${ns} — ${truncate(f.text, 240)}`;
+  });
+  if (overflow > 0) lines.push(`_(+${overflow} more)_`);
+  return ["**Findings**", "", ...lines].join("\n");
 }
 
 function unverifiedClaimsSection(claims: string[]): string {

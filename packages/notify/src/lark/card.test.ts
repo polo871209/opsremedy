@@ -96,6 +96,36 @@ describe("buildRcaCard", () => {
     expect(c.elements.find((e) => e.tag === "action")).toBeUndefined();
   });
 
+  test("findings render with parent label and namespace", () => {
+    const c = buildRcaCard(
+      rep({
+        findings: [
+          {
+            kind: "Pod",
+            name: "payments-api-abc",
+            namespace: "payments",
+            parent: "Deployment/payments-api",
+            text: "Pod stuck: CrashLoopBackOff · restarts=14",
+            severity: "critical",
+            source: "deterministic",
+          },
+        ],
+      }),
+      ALERT,
+    );
+    const md = c.elements.map((e) => (e.tag === "markdown" ? e.content : "")).join("\n");
+    expect(md).toContain("**Findings**");
+    expect(md).toContain("**Deployment/payments-api**");
+    expect(md).toContain("ns: payments");
+    expect(md).toContain("CrashLoopBackOff");
+  });
+
+  test("missing findings → section omitted", () => {
+    const c = buildRcaCard(rep(), ALERT);
+    const md = c.elements.map((e) => (e.tag === "markdown" ? e.content : "")).join("\n");
+    expect(md).not.toContain("**Findings**");
+  });
+
   test("evidence links produce inline markdown links for matching sources", () => {
     const c = buildRcaCard(rep(), ALERT, {
       evidenceLinks: {

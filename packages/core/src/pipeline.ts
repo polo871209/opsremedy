@@ -1,6 +1,7 @@
 import { diagnose } from "./diagnose.ts";
 import { emitInvestigationEvent, type InvestigationEventSink } from "./events.ts";
 import { gatherEvidence } from "./gather.ts";
+import { deriveFindings } from "./health/findings.ts";
 import { buildHealthyReport, isClearlyHealthy } from "./health/short-circuit.ts";
 import { buildEvidenceProvenance } from "./provenance.ts";
 import { buildRerouteHint, MAX_GATHER_LOOPS, shouldReroute } from "./reroute.ts";
@@ -60,6 +61,7 @@ export async function executePipeline(
       if (verdict.healthy) {
         onEvent?.("healthy_short_circuit", { loop, reason: verdict.reason });
         const report = buildHealthyReport(ctx.alert, ctx.evidence, verdict.reason);
+        const findings = deriveFindings(ctx.evidence);
         return {
           ...report,
           tools_called: ctx.tools_called.map((t) => t.name),
@@ -67,6 +69,7 @@ export async function executePipeline(
           usage: addUsage(gatherUsage, lastDiagnoseUsage),
           ...(ctx.evidence.evidence_links && { evidence_links: ctx.evidence.evidence_links }),
           evidence_provenance: buildEvidenceProvenance(ctx),
+          ...(findings.length > 0 && { findings }),
         };
       }
     }
@@ -105,9 +108,11 @@ export async function executePipeline(
   // for-loop runs ≥1 iteration since MAX_GATHER_LOOPS>=1. The non-null
   // assertion encodes that invariant for the type system.
   const finalReport = lastReport!;
+  const findings = deriveFindings(ctx.evidence);
   return {
     ...finalReport,
     usage: addUsage(gatherUsage, lastDiagnoseUsage),
     ...(ctx.evidence.evidence_links && { evidence_links: ctx.evidence.evidence_links }),
+    ...(findings.length > 0 && { findings }),
   };
 }

@@ -107,6 +107,34 @@ export interface RemediationProposal {
   risk: "low" | "medium" | "high";
 }
 
+/**
+ * Structured per-resource health finding. Emitted by deterministic analyzers
+ * (and, optionally, by the diagnose LLM). Renders as a compact table in the
+ * Lark card, separate from the narrative root cause.
+ *
+ * Adapted from k8sgpt-ai/k8sgpt `Result + Failure` (pkg/common/types.go).
+ * Kept narrow: one finding per (kind, name) with a single text field. Multi-
+ * issue resources should produce multiple findings.
+ */
+export interface ResourceFinding {
+  /** Kubernetes Kind, e.g. "Pod", "Deployment", "Service". */
+  kind: string;
+  /** Resource name within `namespace` (or `kind`-scope name for cluster res). */
+  name: string;
+  namespace?: string;
+  /**
+   * Top-level workload label resolved via ownerReferences walk, e.g.
+   * "Deployment/payments-api". Set when relevant; lets the card collapse
+   * 30 ReplicaSet pods to one row.
+   */
+  parent?: string;
+  /** Human-readable failure description (one line preferred). */
+  text: string;
+  severity: "critical" | "warning" | "info";
+  /** Where this finding came from. */
+  source: "deterministic" | "llm";
+}
+
 export interface EvidenceProvenanceEntry {
   tool: string;
   args: unknown;
@@ -256,6 +284,12 @@ export interface RCAReport {
   validated_claims: ValidatedClaim[];
   unverified_claims: string[];
   remediation: RemediationProposal[];
+  /**
+   * Structured per-resource findings (deterministic analyzers + optional
+   * LLM). Parallel to the narrative `causal_chain` and `validated_claims`;
+   * renders as its own Lark card section. Empty when no analyzer ran.
+   */
+  findings?: ResourceFinding[];
   tools_called: string[];
   duration_ms: number;
   /** Aggregate token + cost usage across both phases. */
