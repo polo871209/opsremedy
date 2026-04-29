@@ -23,6 +23,8 @@ export interface LogEntry {
   /** Short rendered preview (single line). Full payload lives in `payload`. */
   textPreview: string;
   payload?: Record<string, unknown>;
+  /** Cloud Logging monitored resource type, e.g. "k8s_container", "gce_instance". */
+  resourceType?: string;
   resource?: Record<string, string>;
   labels?: Record<string, string>;
 }

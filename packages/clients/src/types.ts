@@ -27,8 +27,10 @@ export interface GcpLoggingClient {
   /**
    * Build a Cloud Logging UI URL for the given filter, or undefined when
    * the client has no project context (e.g. fixtures). Pure: no I/O.
+   * `window` encodes the incident time range so the Console opens scoped
+   * to the same interval the tool queried.
    */
-  uiUrl(filter: string, errorsOnly?: boolean): string | undefined;
+  uiUrl(filter: string, errorsOnly?: boolean, window?: { from: Date; to: Date }): string | undefined;
 }
 
 // ---------------- Prometheus ----------------

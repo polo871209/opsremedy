@@ -157,6 +157,31 @@ describe("validateAndFinalize", () => {
     expect(final.unverified_claims.join(" ")).toMatch(/conflicts/);
   });
 
+  test("drops alert-state restatements (already shown in card/markdown)", () => {
+    const ctx = newCtx({
+      gcp_logs: [{ timestamp: "now", severity: "ERROR", textPreview: "boom" }],
+    });
+    const report = baseReport({
+      validated_claims: [
+        {
+          claim: "GCP alert state is CLOSED, confirming the incident resolved",
+          evidence_sources: ["gcp_logs"],
+        },
+        { claim: "boom error", evidence_sources: ["gcp_logs"] },
+        { claim: "alert closed at 07:09:28Z", evidence_sources: ["gcp_logs"] },
+      ],
+    });
+
+    const final = validateAndFinalize(report, ctx);
+
+    expect(final.validated_claims.map((c) => c.claim)).toEqual(["boom error"]);
+    // dropped, not demoted to unverified
+    expect(final.unverified_claims).not.toContain(
+      "GCP alert state is CLOSED, confirming the incident resolved",
+    );
+    expect(final.unverified_claims).not.toContain("alert closed at 07:09:28Z");
+  });
+
   test("adds evidence provenance from audit entries", () => {
     const ctx = newCtx({
       gcp_logs: [{ timestamp: "now", severity: "ERROR", textPreview: "boom" }],

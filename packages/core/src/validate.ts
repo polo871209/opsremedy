@@ -182,6 +182,18 @@ function isClaimBacked(claim: ValidatedClaim, ev: Evidence): boolean {
   return true;
 }
 
+/**
+ * Detect claims that just restate the alert envelope (e.g. "alert is CLOSED",
+ * "the GCP alert resolved at ..."). Card/markdown output already shows alert
+ * state, so these claims are pure noise. Dropped before validation so they
+ * don't inflate the validated/unverified counts either way.
+ */
+function isAlertStateClaim(claim: ValidatedClaim): boolean {
+  const text = claim.claim.toLowerCase();
+  if (!/\balert\b/.test(text)) return false;
+  return /\b(closed|resolved|state|firing|open)\b/.test(text);
+}
+
 function confidenceCap(report: RCAReport, ev: Evidence): { cap: number; reason?: string } {
   const reportText = [report.root_cause, ...report.causal_chain].join(" ").toLowerCase();
   const hasBadEvidence = Boolean(
@@ -239,6 +251,9 @@ export function validateAndFinalize(report: RCAReport, ctx: InvestigationContext
   const unverified: string[] = [...report.unverified_claims];
 
   for (const claim of report.validated_claims) {
+    // Drop claims that merely restate the alert's open/closed state — the
+    // alert envelope is already shown to the user.
+    if (isAlertStateClaim(claim)) continue;
     if (isClaimBacked(claim, ctx.evidence)) {
       validated.push(claim);
     } else {

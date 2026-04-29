@@ -30,19 +30,29 @@ export class RealGcpLoggingClient implements GcpLoggingClient {
     return entries.map((e) => toLogEntry(e as unknown as RawEntry));
   }
 
-  uiUrl(filter: string, errorsOnly = false): string {
-    // GCP Console Logs Explorer uses a matrix parameter `;query=...` BEFORE
-    // the `?project=...` query string. Putting `;query` after the project
-    // makes the console parse the filter as part of the project name and
-    // returns "Invalid resource requested: projects/<project>;query=...".
+  uiUrl(filter: string, errorsOnly = false, window?: { from: Date; to: Date }): string {
+    // GCP Console Logs Explorer uses matrix parameters (`;query=...;timeRange=...`)
+    // BEFORE the `?project=...` query string. Putting them after the project
+    // makes the console parse them as part of the project name and returns
+    // "Invalid resource requested: projects/<project>;query=...".
+    //
+    // Time encoding: we anchor on the window end via `cursorTimestamp` and
+    // express the span as ISO 8601 duration `PT<minutes>M`. This is the form
+    // the Console emits itself and survives copy/paste reliably across
+    // tenants. (`timeRange=<from>/<to>` is also accepted but is sometimes
+    // rewritten by the UI on first load.)
     const projectQs = `?project=${encodeURIComponent(this.projectId)}`;
     const parts = filter ? [filter] : [];
     if (errorsOnly && !/severity\s*[>=<]/i.test(filter)) parts.push("severity>=ERROR");
-    if (parts.length === 0) {
-      return `https://console.cloud.google.com/logs/query${projectQs}`;
+    const matrix: string[] = [];
+    if (parts.length > 0) matrix.push(`query=${encodeURIComponent(parts.join("\n"))}`);
+    if (window) {
+      const durationMin = Math.max(1, Math.ceil((window.to.getTime() - window.from.getTime()) / 60_000));
+      matrix.push(`cursorTimestamp=${encodeURIComponent(window.to.toISOString())}`);
+      matrix.push(`duration=PT${durationMin}M`);
     }
-    const matrix = `;query=${encodeURIComponent(parts.join("\n"))}`;
-    return `https://console.cloud.google.com/logs/query${matrix}${projectQs}`;
+    const matrixStr = matrix.length > 0 ? `;${matrix.join(";")}` : "";
+    return `https://console.cloud.google.com/logs/query${matrixStr}${projectQs}`;
   }
 }
 
@@ -80,9 +90,7 @@ function toLogEntry(raw: RawEntry): LogEntry {
 
   const textFromPayload =
     (typeof m.textPayload === "string" && m.textPayload) ||
-    (m.jsonPayload && typeof (m.jsonPayload as Record<string, unknown>).message === "string"
-      ? ((m.jsonPayload as Record<string, unknown>).message as string)
-      : null) ||
+    (m.jsonPayload ? renderJsonPayload(m.jsonPayload as Record<string, unknown>) : null) ||
     (raw.data && typeof raw.data === "string" ? raw.data : null) ||
     "";
 
@@ -91,9 +99,62 @@ function toLogEntry(raw: RawEntry): LogEntry {
     severity,
     textPreview: collapseToOneLine(textFromPayload),
     ...(m.jsonPayload && { payload: m.jsonPayload as Record<string, unknown> }),
+    ...(m.resource?.type && { resourceType: m.resource.type }),
     ...(Object.keys(resourceLabels).length > 0 && { resource: resourceLabels }),
     ...(Object.keys(labels).length > 0 && { labels }),
   };
+}
+
+/**
+ * Render a structured jsonPayload to a single readable line. Tries common
+ * message fields first, then falls back to a compact key=value summary so
+ * istio/envoy access logs (which have no `message` field) still produce
+ * useful previews for the LLM.
+ *
+ * Exported for unit tests; not part of the GcpLoggingClient interface.
+ */
+export function renderJsonPayload(payload: Record<string, unknown>): string {
+  for (const key of MESSAGE_KEYS) {
+    const v = payload[key];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  // Envoy/istio access-log shape: response_code + path + cluster + flags.
+  const accessLog = renderAccessLog(payload);
+  if (accessLog) return accessLog;
+  // Generic fallback: short compact JSON of the leaf scalars.
+  return compactScalars(payload);
+}
+
+const MESSAGE_KEYS = ["message", "msg", "error", "err", "reason", "description", "summary", "log"];
+
+function renderAccessLog(p: Record<string, unknown>): string {
+  const code = p.response_code ?? p.responseCode ?? p.status ?? p.statusCode;
+  if (code === undefined) return "";
+  const parts: string[] = [`status=${code}`];
+  const flags = p.response_flags ?? p.responseFlags;
+  if (typeof flags === "string" && flags) parts.push(`flags=${flags}`);
+  const method = p.method;
+  if (typeof method === "string") parts.push(`method=${method}`);
+  const path = p.path ?? p.request_path;
+  if (typeof path === "string") parts.push(`path=${path}`);
+  const upstream = p.upstream_cluster ?? p.upstreamCluster ?? p.upstream_host ?? p.upstreamHost;
+  if (typeof upstream === "string") parts.push(`upstream=${upstream}`);
+  const dur = p.duration ?? p.upstream_service_time;
+  if (typeof dur === "number" || typeof dur === "string") parts.push(`dur=${dur}ms`);
+  return parts.join(" ");
+}
+
+function compactScalars(payload: Record<string, unknown>): string {
+  const out: string[] = [];
+  for (const [k, v] of Object.entries(payload)) {
+    if (out.length >= 8) break;
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      const s = String(v);
+      if (s.length > 0) out.push(`${k}=${s.length > 80 ? `${s.slice(0, 77)}...` : s}`);
+    }
+  }
+  return out.join(" ");
 }
 
 function renderTimestamp(ts: unknown): string {

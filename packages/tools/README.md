@@ -1,6 +1,6 @@
 # @opsremedy/tools
 
-The 11 read-only tools the gather agent calls. Each is a pi-mono `AgentTool`
+The 12 read-only tools the gather agent calls. Each is a pi-mono `AgentTool`
 factory that takes the `InvestigationContext` and returns a tool with a
 TypeBox parameter schema.
 
@@ -8,6 +8,7 @@ TypeBox parameter schema.
 
 | name | does |
 |------|------|
+| `discover_gcp_log_resources` | Cheap sample sweep that returns top resource.types, namespaces, pod/container names, and severity counts in the alert window. Call this first to avoid guessing labels. |
 | `query_gcp_logs` | Cloud Logging filter around alert time |
 | `query_prom_instant` | PromQL at a single timestamp |
 | `query_prom_range` | PromQL over a window (range query) |

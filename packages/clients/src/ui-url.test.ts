@@ -28,6 +28,37 @@ describe("RealGcpLoggingClient.uiUrl", () => {
     const url = c.uiUrl('severity>=WARNING AND resource.type="k8s_container"', true);
     expect(url.match(/severity/g)?.length ?? 0).toBe(1);
   });
+
+  test("encodes time window as cursorTimestamp + duration matrix params before project", () => {
+    const from = new Date("2026-04-29T05:37:07.000Z");
+    const to = new Date("2026-04-29T06:34:28.407Z");
+    const url = c.uiUrl('resource.type="k8s_container"', false, { from, to });
+    // matrix params live BEFORE ?project= and use the form GCP Console emits itself.
+    expect(url).toMatch(/;cursorTimestamp=[^?]+;duration=PT\d+M\?project=p-1$/);
+    expect(decodeURIComponent(url)).toContain("cursorTimestamp=2026-04-29T06:34:28.407Z");
+    // 06:34 - 05:37 ≈ 57.36 min → ceil = 58
+    expect(url).toContain("duration=PT58M");
+    // no stray query-string time params
+    expect(url).not.toContain("startTime=");
+    expect(url).not.toContain("endTime=");
+  });
+
+  test("emits only time matrix when filter is empty but window is set", () => {
+    const from = new Date("2026-04-29T05:37:07.000Z");
+    const to = new Date("2026-04-29T06:34:28.407Z");
+    const url = c.uiUrl("", false, { from, to });
+    expect(url).toMatch(
+      /^https:\/\/console\.cloud\.google\.com\/logs\/query;cursorTimestamp=[^?]+;duration=PT\d+M\?project=p-1$/,
+    );
+    expect(url).not.toContain(";query=");
+  });
+
+  test("clamps duration to at least 1 minute for sub-minute windows", () => {
+    const from = new Date("2026-04-29T06:00:00.000Z");
+    const to = new Date("2026-04-29T06:00:30.000Z");
+    const url = c.uiUrl("", false, { from, to });
+    expect(url).toContain("duration=PT1M");
+  });
 });
 
 describe("RealPromClient.uiUrl", () => {

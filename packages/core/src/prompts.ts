@@ -84,6 +84,10 @@ RULES
 - Remediation entries MUST be dry-run / suggestion only. Prefer kubectl commands or yaml
   patches; never imply the agent should execute them. For "healthy" category, remediation
   should be empty or contain only preventive hardening suggestions.
+- DO NOT emit validated_claims that just restate the alert's own state (e.g. "alert is
+  CLOSED", "alert state confirms incident resolved", "the GCP alert closed at ..."). The
+  alert's open/close timestamps are already shown to the user. Claims must add NEW info
+  derived from evidence (logs, metrics, k8s state) — not echo the alert envelope.
 - Output raw JSON only — no markdown fences, no leading text.
 `;
 

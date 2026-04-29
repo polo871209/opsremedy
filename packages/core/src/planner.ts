@@ -1,6 +1,7 @@
 import type { Alert, GatherPlanAudit, ToolPlanEntry } from "./types.ts";
 
 export const ALL_TOOL_NAMES = [
+  "discover_gcp_log_resources",
   "query_gcp_logs",
   "query_prom_instant",
   "query_prom_range",
@@ -17,6 +18,7 @@ export const ALL_TOOL_NAMES = [
 type ToolName = (typeof ALL_TOOL_NAMES)[number];
 
 const BASE_TOOLS: ToolName[] = [
+  "discover_gcp_log_resources",
   "query_gcp_logs",
   "query_prom_range",
   "get_prom_alert_rules",

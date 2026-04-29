@@ -110,3 +110,7 @@ bun run bench -- --scenario 003-noisy-healthy
 - Default LLM: `claude-sonnet-4-5`. Override in onboard or via `OPSREMEDY_LLM_MODEL`.
 
 See [`AGENTS.md`](./AGENTS.md) for development conventions.
+
+## References
+
+- [`googleapis/gcloud-mcp`](https://github.com/googleapis/gcloud-mcp) — tool-design reference.
