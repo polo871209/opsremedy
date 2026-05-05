@@ -9,7 +9,7 @@
     "./lark": "./src/lark/index.ts"
   },
   "dependencies": {
-    "@larksuiteoapi/node-sdk": "1.62.0",
+    "@larksuiteoapi/node-sdk": "1.62.1",
     "@opsremedy/core": "workspace:*"
   }
 }

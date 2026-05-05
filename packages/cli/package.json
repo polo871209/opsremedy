@@ -8,13 +8,13 @@
   },
   "dependencies": {
     "@inquirer/prompts": "8.4.2",
-    "@mariozechner/pi-ai": "0.70.5",
+    "@mariozechner/pi-ai": "0.73.0",
     "@opsremedy/bench": "workspace:*",
     "@opsremedy/clients": "workspace:*",
     "@opsremedy/core": "workspace:*",
     "@opsremedy/notify": "workspace:*",
     "google-auth-library": "10.6.2",
     "picocolors": "1.1.1",
-    "yaml": "2.8.3"
+    "yaml": "2.8.4"
   }
 }
