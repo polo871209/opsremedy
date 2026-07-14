@@ -7,14 +7,14 @@
     "opsremedy": "./src/main.ts"
   },
   "dependencies": {
-    "@inquirer/prompts": "8.4.2",
-    "@mariozechner/pi-ai": "0.70.5",
+    "@inquirer/prompts": "8.5.2",
+    "@mariozechner/pi-ai": "0.73.1",
     "@opsremedy/bench": "workspace:*",
     "@opsremedy/clients": "workspace:*",
     "@opsremedy/core": "workspace:*",
     "@opsremedy/notify": "workspace:*",
-    "google-auth-library": "10.6.2",
+    "google-auth-library": "10.9.0",
     "picocolors": "1.1.1",
-    "yaml": "2.8.3"
+    "yaml": "2.9.0"
   }
 }
