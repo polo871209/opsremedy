@@ -1,0 +1,44 @@
+# Replace every example value before you deploy. Values can read the environment as ${VAR}.
+model:
+  provider: anthropic
+  investigation: claude-opus-5-5
+  synthesis: claude-opus-5-5
+  reasoning: medium
+agent:
+  maxTurns: 20
+  toolExecution: sequential
+  maxConcurrent: 10
+  stallSeconds: 180
+  turnsBySeverity:
+    critical: 30
+    error: 30
+    warning: 20
+    info: 10
+session:
+  dbPath: /data/opsremedy.db
+  ttlSeconds: 15552000
+  linkTtlSeconds: 604800
+notify:
+  flapWindowSeconds: 3600
+timezone: UTC
+systemContext: |
+  - Public request path: client -> ingress gateway -> API gateway -> backend service.
+  - The ingress gateway emits envoy access logs. Each backend service emits its own app logs.
+  - Async work moves over Kafka, not HTTP.
+  - Workloads are Kubernetes Deployments in namespace `default`.
+gcp:
+  project: example-gcp-project
+kubernetes:
+  namespace: default
+prometheus:
+  url: http://prometheus.example.svc.cluster.local:9090
+  datasourceUid: example-datasource-uid
+jaeger:
+  addr: jaeger-query.example.svc.cluster.local:16685
+kafka:
+  brokers:
+    - kafka.example.svc.cluster.local:9092
+grafana:
+  url: https://grafana.example.com
+publicBaseUrl: https://opsremedy.example.com
+maintainerOpenIds: []

@@ -1,0 +1,8 @@
+# Alert name pattern -> tool calls that run before the first agent turn.
+# Templates: {{service}}, {{name}}, {{severity}}, {{namespace}}, {{labels.<key>}}, {{window.start}}, {{window.end}}.
+- alertNamePattern: "Example Pod Restart"
+  calls:
+    - tool: k8s_get_pods
+      args:
+        namespace: "{{namespace}}"
+        labelSelector: "app={{service}}"

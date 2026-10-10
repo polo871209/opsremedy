@@ -1,35 +1,29 @@
 {
   "name": "opsremedy",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AI SRE investigation agent for GCP Logs, Prometheus, Jaeger, and Kubernetes",
+  "description": "AI SRE agent that investigates GCP Monitoring alerts in Lark",
   "license": "MIT",
-  "workspaces": [
-    "packages/*"
-  ],
   "scripts": {
-    "build": "bun run --filter '*' build",
-    "check": "biome check .",
-    "format": "biome format --write .",
-    "lint": "biome lint .",
-    "test": "bun test",
-    "investigate": "bun run --cwd packages/cli src/main.ts investigate",
-    "bench": "bun run --cwd packages/cli src/main.ts bench"
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mariozechner/pi-agent-core": "0.70.5",
-    "@mariozechner/pi-ai": "0.70.5",
-    "@opsremedy/bench": "workspace:*",
-    "@opsremedy/cli": "workspace:*",
-    "@opsremedy/clients": "workspace:*",
-    "@opsremedy/core": "workspace:*",
-    "@opsremedy/tools": "workspace:*",
-    "typebox": "1.1.34"
+    "@earendil-works/chord": "^1.1.0",
+    "@earendil-works/pi-ai": "^1.1.0",
+    "@earendil-works/pi-durable": "^1.1.0",
+    "@google-cloud/logging": "^12.2.0",
+    "@grpc/grpc-js": "^1.14.6",
+    "@grpc/proto-loader": "^0.8.1",
+    "@kubernetes/client-node": "^2.0.0",
+    "@larksuiteoapi/node-sdk": "1.74.0",
+    "kafkajs": "^2.2.4",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.13",
-    "@types/bun": "1.3.13",
-    "typescript": "6.0.3"
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
   }
 }

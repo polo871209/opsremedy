@@ -8,112 +8,90 @@
 
 <h1 align="center">OpsRemedy</h1>
 
-> **Personal project — limited support.** Built for my own workflow. Issues and PRs welcome but I make no commitments to respond, fix, or maintain.
+> **Personal project, limited support.** Built for my own workflow. Issues and PRs are welcome, but I make no commitment to respond, fix, or maintain.
 
-AI SRE investigation agent. Paste a GCP Monitoring alert URL, get a structured root-cause analysis grounded in your real Kubernetes cluster, Prometheus metrics, Jaeger traces, and Cloud Logging.
+OpsRemedy is a Lark bot that investigates GCP Monitoring alerts. It posts an alert card, has Claude check logs, metrics, traces, Kubernetes and Kafka, and then posts a root cause in the alert thread. Engineers ask follow-up questions in that thread.
 
-Read-only by design. `propose_remediation` records suggestions; nothing executes against your cluster or cloud.
+The agent is read-only. No agent tool writes to your cluster or your cloud.
 
 > **Credits**
+>
 > - Idea inspired by [Tracer-Cloud/opensre](https://github.com/Tracer-Cloud/opensre).
-> - Agent runtime: [`badlogic/pi-mono`](https://github.com/badlogic/pi-mono) (tool calling, parallel exec, OAuth, multi-provider).
+> - Agent runtime: [`earendil-works/pi`](https://github.com/earendil-works/pi) (`pi-ai`, `pi-durable`).
 
-## How it works
+## Alert flow
 
 ```mermaid
 flowchart TD
-    A[Alert URL or alert.json] --> B[Load alert]
-    B --> C[Bootstrap read-only clients]
-    C --> D[Create investigation context]
-
-    D --> E[Deterministic tool plan]
-    E -->|alert labels + text| F[Select candidate tools]
-    F --> G[Gather agent]
-
-    G -->|tool budget + reserved evidence slots| H{Tool call allowed?}
-    H -->|yes| I[Run read-only tool]
-    H -->|no| G
-    I --> J[(Evidence store)]
-    I --> K[(Tool audit + provenance)]
-    J --> G
-
-    G --> L{Clearly healthy?}
-    L -->|yes| M[Healthy short-circuit report]
-    L -->|no| N[Diagnosis agent]
-
-    N -->|strict JSON, 1 retry| O[Validate claims]
-    O -->|source populated + claim text matches evidence| P[Recompute confidence]
-    P --> Q{Need reroute?}
-    Q -->|unknown or low confidence + budget left| E
-    Q -->|no| R[RCA report]
-
-    M --> S[Output JSON / markdown / Lark]
-    R --> S
-
-    T[Tool families:<br/>GCP logs · Prometheus · Jaeger · Kubernetes · remediation sink] -.-> G
+  GCP[GCP Monitoring alert] -->|POST /alert/:chatId| WH[gcp/webhook.ts]
+  WH --> FLAP{Same alert open<br/>in the last hour?}
+  FLAP -->|yes| PATCH[Update the first card.<br/>No new investigation.]
+  FLAP -->|no| CARD[OPEN card in a Lark thread]
+  CARD --> PRE[Deterministic prep:<br/>seed-calls.yaml results]
+  PRE --> INV[Investigate phase:<br/>tool loop, turn budget by severity]
+  INV <--> TOOLS[(logs, metrics, traces,<br/>k8s, kafka)]
+  INV --> DIAG[Diagnose phase:<br/>submit_diagnosis]
+  DIAG --> GATE{Every evidence line<br/>backed by a tool result?}
+  GATE -->|no| DIAG
+  GATE -->|yes| OUT[Diagnosis card in the thread]
+  CLOSED[CLOSED alert] --> GREEN[Card turns green]
 ```
 
-## Get started
+`gcp/incident.ts:alertKey` decides whether two alerts are the same one. The grounding check is `tools/evidence.ts` plus `tools/grounding.ts`.
 
-**1. Install**
+## Thread flow
 
-```bash
-git clone https://github.com/polo871209/opsremedy && cd opsremedy
-bun install
-cd packages/cli && bun link
-export PATH="$HOME/.bun/bin:$PATH"   # add to ~/.zshrc to persist
+```mermaid
+flowchart TD
+  MSG[Message in a Lark thread] --> HO{Contains 'handoff'?}
+  HO -->|yes| LINK[Compile findings.<br/>Reply with a signed link.]
+  HO -->|no| INVITED{Alert thread, or<br/>bot mentioned before?}
+  INVITED -->|no| SILENT[Record it. No reply.]
+  INVITED -->|yes| TRI{Bot mentioned now,<br/>or triage says reply?}
+  TRI -->|no| SILENT
+  TRI -->|yes| LIVE{Reply run already<br/>active in this thread?}
+  LIVE -->|yes| STEER[Join that run.<br/>One reply for both.]
+  LIVE -->|no| AGENT[Resume the session.<br/>Agent with all tools.]
+  STEER --> REPLY[Reply in the thread]
+  AGENT --> REPLY
 ```
 
-**2. Onboard** — interactive wizard picks LLM provider/model, GCP project, K8s context, Prometheus/Jaeger URLs.
+The code is in `lark/handler.ts`, `triage.ts` and `harness/reply.ts`. The handoff doc is for a local dev agent, and text after `handoff` sets its focus.
 
-```bash
-opsremedy onboard
-```
+## Tools the agent can call
 
-LLM auth: API key or OAuth subscription (Claude Pro/Max, ChatGPT Plus, Gemini CLI, GitHub Copilot).
+| Tools                                                                                          | File in `src/tools/`   |
+| ---------------------------------------------------------------------------------------------- | ---------------------- |
+| `gcp_logging_query`                                                                            | `gcp_logging.ts`       |
+| `prom_*`, `promql_instant`, `promql_range`, `promql_movers`                                    | `prom.ts`, `movers.ts` |
+| `jaeger_get_trace` (lookup by trace id only)                                                   | `jaeger.ts`            |
+| `kafka_list_groups`, `kafka_describe_group`, `kafka_list_topics`, `kafka_describe_topic`       | `kafka.ts`             |
+| `k8s_get_pods`, `k8s_pod_logs`, `k8s_get_events`, `k8s_get_deployments`, `k8s_rollout_history` | `kubernetes.ts`        |
+| `submit_diagnosis` (ends the run)                                                              | `registry.ts`          |
 
-**3. Investigate**
+## Run it
 
-```bash
-# from a GCP Monitoring alert URL
-opsremedy investigate --url 'https://console.cloud.google.com/monitoring/alerting/alerts/<id>?project=<project>'
+1. Install the tools with `mise install`, the dependencies with `bun install`, and the gitleaks commit hook with `prek install`.
+2. Copy `.env.example` to `.env` and fill in the Lark app, the webhook token and the session secret.
+3. Replace every example value in `config.yaml`. `systemContext` describes your request path and namespaces to the agent.
+4. Start the server with `bun run dev`.
+5. Point a GCP Monitoring webhook channel at `https://<publicBaseUrl>/alert/<lark-chat-id>?token=<OPSREMEDY_WEBHOOK_TOKEN>`.
 
-# from a local alert JSON
-opsremedy investigate -i alert.json
+`seed-calls.yaml` maps an alert name pattern to tool calls that run before the first agent turn. The Anthropic OAuth rotation runbook is [`auth.md`](./auth.md).
 
-# write a markdown report alongside JSON output
-opsremedy investigate --url '...' --markdown report.md
-```
+## State
 
-Output: structured RCA on stdout, progress events on stderr, optional markdown sidecar.
-
-**Optional: Lark notifications** — push the RCA report to a Lark/Feishu chat as a color-coded message card.
-
-1. Create a self-built app at <https://open.larksuite.com/app>; enable bot ability and add scope `im:message:send_as_bot`.
-2. Add the bot to the target group; copy the chat_id.
-3. Re-run `opsremedy onboard` and answer the Lark prompts (or set `OPSREMEDY_LARK_APP_ID`, `OPSREMEDY_LARK_APP_SECRET`, `OPSREMEDY_LARK_RECEIVE_ID`).
-4. Default policy `non_healthy` skips healthy short-circuits. Force-send with `--lark`, force-skip with `--no-lark`.
-
-## Bench
-
-Synthetic scenarios with fixture clients — no real infra needed (still hits the LLM).
-
-```bash
-bun run bench                              # all scenarios
-bun run bench -- --scenario 003-noisy-healthy
-```
+Each Lark thread has one session with its transcript and alert metadata. Sessions and a KV store sit in SQLite at `config.yaml:session.dbPath`. Sessions and incident rows expire after `session.ttlSeconds` (180 days by default). Alert groups expire after the flap window (1 hour), and signed links expire after 1 week.
 
 ## Caveats
 
-- Runs against your **configured K8s context** — may be production. Read-only, but logs and pod state flow to the LLM.
-- GCP Monitoring incident API is in Public Preview; some projects fall back to AlertPolicy lookups.
-- Default LLM: `claude-sonnet-4-5`. Override in onboard or via `OPSREMEDY_LLM_MODEL`.
+- The agent reads whatever Kubernetes context and GCP project the pod can reach, and that can be production. Logs and pod state flow to the LLM.
+- `utils/token-refresh.ts` patches the bot's own token Secret. It is the only cluster write, and no agent tool can call it.
 
 See [`AGENTS.md`](./AGENTS.md) for development conventions.
 
 ## References
 
-- [`googleapis/gcloud-mcp`](https://github.com/googleapis/gcloud-mcp) — tool-design reference.
-- [`JuliusBrussee/caveman`](https://github.com/JuliusBrussee/caveman) — prompt-compression reference.
-- [`k8sgpt-ai/k8sgpt`](https://github.com/k8sgpt-ai/k8sgpt) — deterministic k8s analyzer + failure-catalog reference.
-- [`pab1it0/prometheus-mcp-server`](https://github.com/pab1it0/prometheus-mcp-server) — Prometheus discovery-tool reference.
+- [`googleapis/gcloud-mcp`](https://github.com/googleapis/gcloud-mcp): tool-design reference.
+- [`k8sgpt-ai/k8sgpt`](https://github.com/k8sgpt-ai/k8sgpt): deterministic k8s analyzer reference.
+- [`pab1it0/prometheus-mcp-server`](https://github.com/pab1it0/prometheus-mcp-server): Prometheus discovery-tool reference.

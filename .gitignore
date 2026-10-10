@@ -1,10 +1,9 @@
-node_modules
-dist
-build
+node_modules/
+auth.json
+.envrc
 .env
-.env.local
+.env.*
+!.env.example
 *.log
 .DS_Store
-bun.lockb
-.bun
-coverage
+*.db
