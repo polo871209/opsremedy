@@ -23,6 +23,7 @@ export const ThreadIndex = defineDocFamily<{ conversationId: ConversationId | nu
   scope: "session",
   family: true,
   initial: () => ({ conversationId: null }),
+  checkpointWhen: () => true,
 });
 
 export const AlertDoc = defineDoc<{ alert: JsonObject }>({
@@ -32,6 +33,7 @@ export const AlertDoc = defineDoc<{ alert: JsonObject }>({
   history: "latest",
   fork: "current",
   initial: () => ({ alert: { name: "", source: "", severity: "" } }),
+  checkpointWhen: () => true,
 });
 
 export type ThreadState = {
@@ -65,6 +67,17 @@ export const ThreadDoc = defineDoc<ThreadState>({
     groundingRejected: false,
     posted: [],
   }),
+  checkpointWhen: () => true,
+});
+
+export const AssessmentDoc = defineDoc<{ assessment: JsonObject | null }>({
+  kind: "sre.assessment",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ assessment: null }),
+  checkpointWhen: () => true,
 });
 
 export function json(value: object): JsonObject {

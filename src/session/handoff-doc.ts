@@ -34,6 +34,8 @@ export const QUERY_FORMATTERS: Record<string, Formatter> = {
   k8s_get_events: (a) => ns(a, ["involvedObjectName", "type"]),
   k8s_get_deployments: (a) => ns(a, ["labelSelector"]),
   k8s_rollout_history: (a) => (s(a.namespace) && s(a.name) ? `${a.namespace}/${a.name}` : undefined),
+  k8s_get_nodes: () => "all nodes",
+  k8s_list_images: (a) => ns(a, ["match"]),
   promql_movers: (a) =>
     s(a.fleet)
       ? `fleet=${a.fleet}${s(a.query) ? ` query=${a.query}` : ""} spike=[${s(a.spikeStart) ?? "?"} .. ${s(a.spikeEnd) ?? "?"}]`

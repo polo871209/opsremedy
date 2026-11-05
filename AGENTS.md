@@ -24,9 +24,13 @@ src/
             message to a busy conversation steers into its run. While the investigation runs, a follow-up
             answers on a fork. tools.ts wraps every tool with the dedup, stagnation and turn-budget gate,
             all rebuilt from the transcript, so a restart resumes every task where it stopped.
-            retention.ts deletes threads idle past session.ttlSeconds with SQL on pi-durable's v1 tables,
+            retention.ts deletes threads idle past session.ttlSeconds with SQL on pi-durable's schema v2 tables,
             because the library has no delete API. It skips threads this process has read (Session cache).
             index.ts runs it with the KV sweep every Monday 03:00 in config.yaml:timezone.
+  deploy/   POST /deploy/watch takes a GitHub Actions OIDC token from config.yaml:deploy, checks each
+            service 5 min after its rollout, and starts one investigation from the findings.
+  feed/     the config.yaml:feeds RSS poller. card.ts escapes all feed text. assess.ts runs one threat
+            assessment per posted item and replies only when actionRequired is true or the run fails.
   lark/     Lark client, WS, event parser, handler, card
   session/  incidents, incident-meta, alert groups and thread-message cache in the SQLite/in-memory KV
             store (store.ts). Signed links, the deterministic handoff doc (handoff-doc.ts) and its

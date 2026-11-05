@@ -1,4 +1,3 @@
-
 export function formatToolStatus(toolName: string, args: any): string {
   const trunc = (s: unknown, n = 80) =>
     String(s ?? "")
@@ -26,6 +25,10 @@ export function formatToolStatus(toolName: string, args: any): string {
       return "Listing deployments";
     case "k8s_rollout_history":
       return `Checking rollout history${args?.name ? `: ${trunc(args.name, 40)}` : ""}`;
+    case "k8s_get_nodes":
+      return "Listing cluster nodes";
+    case "k8s_list_images":
+      return `Listing running images${args?.match ? `: ${trunc(args.match, 40)}` : ""}`;
     case "submit_diagnosis":
       return "Finalizing diagnosis\u2026";
     default:

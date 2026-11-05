@@ -1,6 +1,4 @@
-import { invalidateAnthropicToken } from "./anthropic_token.ts";
-import { refreshNow } from "./token-refresh.ts";
-import { track } from "./inflight.ts";
+import { anthropicCredentials } from "./token-refresh.ts";
 import { log } from "./logger.ts";
 
 const AUTH_MARKERS = [
@@ -37,11 +35,10 @@ export function userFacingError(err: string | undefined): string {
 
 export function noteModelError(err: string | undefined, fields: Record<string, unknown> = {}): boolean {
   if (!err || !isAuthError(err)) return false;
-  invalidateAnthropicToken();
+  anthropicCredentials.expire();
   log.error("anthropic credential rejected; reseed required (auth.md)", undefined, {
     ...fields,
     detail: err.slice(0, 200).replace(SECRET_RE, "[redacted]"),
   });
-  track(refreshNow("auth-error").catch(() => {}));
   return true;
 }

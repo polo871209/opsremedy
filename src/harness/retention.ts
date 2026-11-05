@@ -5,13 +5,13 @@ import {
 } from "@earendil-works/pi-durable/storage/sqlite";
 import { ThreadDoc, ThreadIndex } from "./docs.ts";
 
-const PRUNABLE_SCHEMA_VERSION = 1;
+const PRUNABLE_SCHEMA_VERSION = 2;
 const IN_JSON = "(SELECT value FROM json_each(?))";
 
 const loadedThreads = new Set<string>();
 
-// pi-durable's Session caches every document it loads and never rereads it, so pruning a loaded thread leaves a stale
-// cache hit. Call this before the first read of a thread.
+// pi-durable's Session caches the records and documents it reads, so pruning a thread this process read can leave a
+// stale cache hit. Call this before the first read of a thread.
 export function keepUntilRestart(threadKey: string): void {
   loadedThreads.add(threadKey);
 }

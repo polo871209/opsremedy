@@ -38,7 +38,10 @@ function reporterFor(input: InvestigationInput): ProgressReporter | undefined {
   return reporter;
 }
 
-async function inSlot(runtime: Runtime, fn: () => Promise<string | undefined>): Promise<string | undefined> {
+type TurnRuntime = Pick<Runtime, "conversation" | "conversationId" | "signal">;
+
+/** Runs fn in an investigation slot. Returns the failure text, or undefined when fn succeeds. */
+export async function inSlot(runtime: TurnRuntime, fn: () => Promise<string | undefined>): Promise<string | undefined> {
   await investigationSlots().acquire();
   try {
     return await fn();
@@ -50,8 +53,9 @@ async function inSlot(runtime: Runtime, fn: () => Promise<string | undefined>): 
   }
 }
 
-async function run(
-  runtime: Runtime,
+/** Submits one input turn to the task's conversation and waits under the watchdog. Returns the failure text, or undefined. */
+export async function run(
+  runtime: TurnRuntime,
   content: string,
   requestId: string,
   reporter: ProgressReporter | undefined,

@@ -1,6 +1,6 @@
 import type { Message } from "@earendil-works/pi-ai";
 
-const echoesRejectedClaims = (toolName: string) => toolName === "submit_diagnosis";
+const echoesRejectedClaims = (toolName: string) => toolName === "submit_diagnosis" || toolName === "submit_assessment";
 
 export function buildEvidenceCorpus(messages: Message[]): string {
   return messages

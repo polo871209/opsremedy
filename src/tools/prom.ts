@@ -1,5 +1,5 @@
-import { Type } from "@earendil-works/pi-ai";
-import type { SreTool } from "./types.ts";
+import { arr, int, obj, opt, str } from "@earendil-works/pi-schema";
+import { sreTool, type SreTool } from "./types.ts";
 import { textResult, guarded } from "./result.ts";
 
 // Grafana Explore deep link, modern `panes` schema (Grafana 10+).
@@ -98,20 +98,21 @@ function summarizeRange(body: unknown): unknown {
   return { resultType: "matrix", seriesCount: series.length, series };
 }
 
+const MATCH_HELP =
+  "Series matchers with a concrete metric name, for example ['up{job=\"k8s\"}']. GMP rejects a matcher whose only selector is a regex on __name__.";
+
 function instantQueryTool(promUrl: string, grafanaUrl: string, datasource: string): SreTool {
-  return {
+  return sreTool({
     name: "promql_instant",
     cheap: false,
     retry: true,
     description:
-      "Evaluate a PromQL expression at ONE instant, by default the alert end (or now if still firing). " +
-      "For anything shaped over time — onset, trend, recovery — use promql_range instead. Returns the result plus a Grafana Explore link.",
-    parameters: Type.Object({
-      query: Type.String({ description: "PromQL expression" }),
-      time: Type.Optional(Type.String({ description: "ISO8601 or unix-ms/sec. Default = alert end." })),
+      "Evaluate PromQL at one instant, by default the alert end or now. For onset, trend or recovery, use promql_range. Returns the result and a Grafana link.",
+    parameters: obj({
+      query: str({ description: "PromQL expression" }),
+      time: opt(str({ description: "ISO8601 or unix-ms/sec. Default = alert end." })),
     }),
-    execute: guarded(async (args, tw) => {
-      const a = args as { query: string; time?: string };
+    execute: guarded(async (a, tw) => {
       const win = tw.clamp({ endTime: a.time });
       const params = new URLSearchParams({ query: a.query, time: String(win.endUnix) });
       const { ok, body } = await promFetch(promUrl, "/api/v1/query", params);
@@ -126,26 +127,24 @@ function instantQueryTool(promUrl: string, grafanaUrl: string, datasource: strin
         !ok,
       );
     }),
-  };
+  });
 }
 
 function rangeQueryTool(promUrl: string, grafanaUrl: string, datasource: string): SreTool {
-  return {
+  return sreTool({
     name: "promql_range",
     cheap: false,
     retry: true,
     description:
-      "Evaluate a PromQL expression across the alert window (default) — the tool for onset, trend, and recovery. " +
-      "Prefer range vectors of [5m] or larger: GMP scrapes at 30s, so shorter windows hold too few samples for a stable rate. " +
-      "Returns per-series stats {min,max,p50,p95,first,last} (NOT raw sample arrays) + a Grafana Explore link.",
-    parameters: Type.Object({
-      query: Type.String({ description: "PromQL expression" }),
-      step: Type.Optional(Type.String({ description: "e.g. 30s, 1m (default 30s)" })),
-      startTime: Type.Optional(Type.String({ description: "ISO8601 or unix-ms/sec. Default = window start." })),
-      endTime: Type.Optional(Type.String({ description: "ISO8601 or unix-ms/sec. Default = window end." })),
+      "Evaluate PromQL across the alert window. Returns min, max, p50, p95, first and last per series, not raw samples, and a Grafana link. " +
+      "GMP scrapes every 30s, so use range vectors of [5m] or longer.",
+    parameters: obj({
+      query: str({ description: "PromQL expression" }),
+      step: opt(str({ description: "e.g. 30s, 1m (default 30s)" })),
+      startTime: opt(str({ description: "ISO8601 or unix-ms/sec. Default = window start." })),
+      endTime: opt(str({ description: "ISO8601 or unix-ms/sec. Default = window end." })),
     }),
-    execute: guarded(async (args, tw) => {
-      const a = args as { query: string; step?: string; startTime?: string; endTime?: string };
+    execute: guarded(async (a, tw) => {
       const win = tw.clamp({ startTime: a.startTime, endTime: a.endTime });
       const params = new URLSearchParams({
         query: a.query,
@@ -165,27 +164,24 @@ function rangeQueryTool(promUrl: string, grafanaUrl: string, datasource: string)
         !ok,
       );
     }),
-  };
+  });
 }
 
 function listMetricsTool(promUrl: string): SreTool {
-  return {
+  return sreTool({
     name: "prom_list_metrics",
     cheap: true,
     retry: true,
-    description:
-      "List metric names. ALWAYS pass `contains`: unfiltered, the first 100 names returned are rarely the relevant ones.",
-    parameters: Type.Object({
-      contains: Type.Optional(
-        Type.String({
-          description:
-            "Substring filter (case-insensitive). Use a topic/service/component fragment, e.g. 'kafka', 'consumer', 'clickhouse'.",
+    description: "List metric names. Always pass `contains`, because the unfiltered list is cut at `limit`.",
+    parameters: obj({
+      contains: opt(
+        str({
+          description: "Case-insensitive substring, for example 'kafka', 'consumer' or 'clickhouse'.",
         }),
       ),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500, default: 100 })),
+      limit: opt(int({ minimum: 1, maximum: 500, default: 100 })),
     }),
-    execute: guarded(async (args) => {
-      const a = args as { contains?: string; limit?: number };
+    execute: guarded(async (a) => {
       const { ok, body } = await promFetch(promUrl, "/api/v1/label/__name__/values", new URLSearchParams());
       if (!ok) return textResult(body, true);
       let names = ((body as { data?: string[] }).data ?? []) as string[];
@@ -200,97 +196,90 @@ function listMetricsTool(promUrl: string): SreTool {
         metrics: names.slice(0, limit),
       });
     }),
-  };
+  });
 }
 
 function metricMetadataTool(promUrl: string): SreTool {
-  return {
+  return sreTool({
     name: "prom_metric_metadata",
     cheap: true,
     retry: true,
     description:
-      "HELP + TYPE + UNIT for a metric. Read it before querying an unfamiliar metric — TYPE decides whether rate()/histogram_quantile() even applies.",
-    parameters: Type.Object({
-      metric: Type.Optional(Type.String({ description: "Exact metric name (optional)" })),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+      "HELP, TYPE and UNIT of a metric. Read it before you query an unfamiliar metric, because TYPE decides whether rate() or histogram_quantile() applies.",
+    parameters: obj({
+      metric: opt(str({ description: "Exact metric name" })),
+      limit: opt(int({ minimum: 1, maximum: 200, default: 50 })),
     }),
-    execute: guarded(async (args) => {
-      const a = args as { metric?: string; limit?: number };
+    execute: guarded(async (a) => {
       const params = new URLSearchParams();
       if (a.metric) params.set("metric", a.metric);
-      if (a.limit) params.set("limit", String(a.limit));
+      params.set("limit", String(a.limit ?? 50));
       const { ok, body } = await promFetch(promUrl, "/api/v1/metadata", params);
       return textResult(body, !ok);
     }),
-  };
+  });
 }
 
 function labelNamesTool(promUrl: string): SreTool {
-  return {
+  return sreTool({
     name: "prom_label_names",
     cheap: true,
     retry: true,
-    description:
-      "List label names carried by matched series — use it to learn how a metric is sliced before writing a selector. " +
-      "GMP rejects a matcher whose only selector is a regex on __name__, so `match` needs a concrete metric name.",
-    parameters: Type.Object({
-      match: Type.Optional(
-        Type.Array(Type.String(), {
-          description: "Series matchers, concrete metric name required, e.g. ['up{job=\"k8s\"}']",
+    description: "Label names on the matched series. Read them before you write a selector.",
+    parameters: obj({
+      match: opt(
+        arr(str(), {
+          description: MATCH_HELP,
         }),
       ),
     }),
-    execute: guarded(async (args) => {
-      const a = args as { match?: string[] };
+    execute: guarded(async (a) => {
       const params = new URLSearchParams();
       for (const m of a.match ?? []) params.append("match[]", m);
       const { ok, body } = await promFetch(promUrl, "/api/v1/labels", params);
       return textResult(body, !ok);
     }),
-  };
+  });
 }
 
 function labelValuesTool(promUrl: string): SreTool {
-  return {
+  return sreTool({
     name: "prom_label_values",
     cheap: true,
     retry: true,
     description:
-      "Values a label actually takes — the way to confirm a namespace, pod, container, service or consumergroup exists before selecting on it. " +
-      "GMP rejects a matcher whose only selector is a regex on __name__, so `match` needs a concrete metric name.",
-    parameters: Type.Object({
-      label: Type.String({ description: "Label name, e.g. namespace, pod" }),
-      match: Type.Optional(
-        Type.Array(Type.String(), {
-          description: "Series matchers, concrete metric name required, e.g. ['up{job=\"k8s\"}']",
+      "Values of one label on the matched series. Use it to make sure that a namespace, pod, container or consumergroup exists before you select on it.",
+    parameters: obj({
+      label: str(),
+      match: opt(
+        arr(str(), {
+          description: MATCH_HELP,
         }),
       ),
     }),
-    execute: guarded(async (args) => {
-      const a = args as { label: string; match?: string[] };
+    execute: guarded(async (a) => {
       const params = new URLSearchParams();
       for (const m of a.match ?? []) params.append("match[]", m);
       const { ok, body } = await promFetch(promUrl, `/api/v1/label/${encodeURIComponent(a.label)}/values`, params);
       return textResult(body, !ok);
     }),
-  };
+  });
 }
 
 function seriesTool(promUrl: string): SreTool {
-  return {
+  return sreTool({
     name: "prom_series",
     cheap: true,
     retry: true,
     description:
-      "List the series a matcher resolves to within the alert window, label sets included — the check that a selector will return data before querying it. " +
-      "Empty means nothing matched: usually a wrong label or metric name, occasionally a workload that stopped reporting.",
-    parameters: Type.Object({
-      match: Type.Array(Type.String(), {
-        description: "Series matchers, concrete metric name required (GMP), e.g. ['up{job=\"k8s\"}']",
+      "Series that a matcher resolves to in the alert window, with their labels. " +
+      "An empty result usually means a wrong label or metric name, and sometimes a workload that stopped reporting.",
+    parameters: obj({
+      match: arr(str(), {
+        description: MATCH_HELP,
       }),
     }),
-    execute: guarded(async (args, tw) => {
-      const a = args as { match: string[] };
+    execute: guarded(async (a, tw) => {
       const params = new URLSearchParams();
       for (const m of a.match) params.append("match[]", m);
       params.set("start", String(tw.startUnix()));
@@ -298,7 +287,7 @@ function seriesTool(promUrl: string): SreTool {
       const { ok, body } = await promFetch(promUrl, "/api/v1/series", params);
       return textResult(body, !ok);
     }),
-  };
+  });
 }
 
 export function promTools(promUrl: string, grafanaUrl: string, datasource: string): SreTool[] {

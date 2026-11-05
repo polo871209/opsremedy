@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
-import { Type } from "@earendil-works/pi-ai";
-import type { SreTool } from "./types.ts";
+import { bool, obj, opt, str } from "@earendil-works/pi-schema";
+import { sreTool, type SreTool } from "./types.ts";
 import { textResult, guarded } from "./result.ts";
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
@@ -92,31 +92,29 @@ function normalizeTraceId(raw: string): string | undefined {
 }
 
 function getTraceTool(addr: string): SreTool {
-  return {
+  return sreTool({
     name: "jaeger_get_trace",
     cheap: false,
     retry: true,
     description:
-      "Span tree for one hex trace ID, fetched within the alert window. Answers per-request timing and cross-service topology. " +
-      "The only jaeger tool: trace search by service or operation does not exist, so the id MUST come from a log line (a gcp_logging_query sample_trace). Without one, stay in the logs. " +
-      "Returns spans ALREADY SORTED by start time, each with service, name, span_id, parent_span_id, start_ms (offset from trace start), dur_ms, error, and the http./rpc./db./messaging./exception. attributes. Other attributes are dropped; pass raw=true for the untouched OTel resourceSpans. " +
-      "Among spans with status.code=STATUS_CODE_ERROR, the INNERMOST one (no other error span lists its spanId as parentSpanId) is where the failure originated; its ancestors only propagate it. " +
-      "Only sampled requests have spans here — prefer an id whose gcp_logging_query sample_trace_sampled is true. " +
-      'Empty result means that request was not sampled: routine, not a gap. Never cite it as evidence, root cause, or an observability gap, and never retry it — re-query gcp_logging_query with `trace="projects/<project>/traces/<id>"`, which returns that request\'s lines across every service regardless of sampling.',
-    parameters: Type.Object({
-      traceId: Type.String({
-        description:
-          "Hex trace ID, 16 or 32 chars. The 'projects/<project>/traces/<id>' form is accepted. Anything else is rejected without a query.",
+      "Span tree of one trace in the alert window, for per-request timing and cross-service flow. " +
+      "It cannot search, so the id must come from a gcp_logging_query sample_trace. Without one, stay in the logs. " +
+      "Spans come sorted by start time, with the http., rpc., db., messaging., exception., peer. and error attributes. " +
+      "The innermost span with error set is where the failure started. Its ancestors only pass the error up. " +
+      "Only sampled requests have spans, so prefer an id with sample_trace_sampled=true. " +
+      "An empty result means that the request was not sampled. Never cite it or retry it. Query gcp_logging_query with that trace instead.",
+    parameters: obj({
+      traceId: str({
+        description: "16 or 32 hex characters, or the 'projects/<project>/traces/<id>' form.",
       }),
-      raw: Type.Optional(
-        Type.Boolean({
+      raw: opt(
+        bool({
           description:
-            "Return untouched OTel resourceSpans with every attribute. Costs far more context and risks truncation on a wide trace — use only when a dropped attribute is the answer.",
+            "Return the untouched OTel resourceSpans with every attribute. Use it only when a dropped attribute is the answer, because a wide trace gets truncated.",
         }),
       ),
     }),
-    execute: guarded(async (args, tw) => {
-      const a = args as { traceId: string; raw?: boolean };
+    execute: guarded(async (a, tw) => {
       const traceId = normalizeTraceId(a.traceId ?? "");
       if (!traceId) {
         return textResult(
@@ -142,7 +140,7 @@ function getTraceTool(addr: string): SreTool {
       if (a.raw) return textResult(r);
       return textResult({ trace_id: traceId, ...compactTrace((r.resourceSpans ?? []) as unknown[]) });
     }),
-  };
+  });
 }
 
 export function jaegerTools(addr: string): SreTool[] {

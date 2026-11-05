@@ -1,7 +1,10 @@
 import { statSync, readFileSync } from "node:fs";
+import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
+import { log } from "./logger.ts";
 
 const DIR = "/var/run/opsremedy";
 const CACHE_TTL_MS = 30_000;
+const PROVIDER_ID = "anthropic";
 
 export interface Creds {
   access: string;
@@ -9,8 +12,9 @@ export interface Creds {
   expires: number;
 }
 
+type OAuthCredential = Extract<Credential, { type: "oauth" }>;
+
 const fileCache = new Map<string, { value: string; mtimeMs: number; checkedAt: number }>();
-let live: Creds | undefined;
 
 function readField(key: string): string | undefined {
   try {
@@ -31,29 +35,91 @@ function field(key: string): string | undefined {
   return readField(key) ?? process.env[key] ?? undefined;
 }
 
-export function getAnthropicToken(): string | undefined {
-  if (live?.access) return live.access;
-  return field("ANTHROPIC_OAUTH_TOKEN") ?? process.env.ANTHROPIC_API_KEY;
-}
-
-export function currentCreds(): { access?: string; refresh?: string; expires: number } {
-  if (live) return { ...live };
+function mountedCredential(): OAuthCredential | undefined {
+  const refresh = field("ANTHROPIC_REFRESH_TOKEN");
+  if (!refresh) return undefined;
   return {
-    access: field("ANTHROPIC_OAUTH_TOKEN"),
-    refresh: field("ANTHROPIC_REFRESH_TOKEN"),
+    type: "oauth",
+    access: field("ANTHROPIC_OAUTH_TOKEN") ?? "",
+    refresh,
     expires: Number(field("ANTHROPIC_TOKEN_EXPIRES_AT") ?? 0) || 0,
   };
 }
 
-export function setLiveCreds(creds: Creds): void {
-  live = creds;
+function isInvalidGrant(error: unknown): boolean {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if (/invalid_grant/i.test(e.message)) return true;
+  }
+  return false;
 }
 
-export function clearLiveCreds(): void {
-  live = undefined;
-  fileCache.clear();
-}
+/**
+ * Holds the one Anthropic OAuth credential. The live credential (set by a refresh) wins over the mounted Secret files.
+ * `Models` refreshes through `modify`, which persists each rotated pair with `patchSecret`.
+ */
+export class SecretCredentialStore implements CredentialStore {
+  private live: OAuthCredential | undefined;
+  private tail: Promise<unknown> = Promise.resolve();
 
-export function invalidateAnthropicToken(): void {
-  fileCache.clear();
+  constructor(private readonly patchSecret: (creds: Creds) => Promise<void>) {}
+
+  private current(): OAuthCredential | undefined {
+    return this.live ?? mountedCredential();
+  }
+
+  async read(providerId: string): Promise<Credential | undefined> {
+    return providerId === PROVIDER_ID ? this.current() : undefined;
+  }
+
+  async list() {
+    return this.current() ? [{ providerId: PROVIDER_ID, type: "oauth" as const }] : [];
+  }
+
+  async delete(providerId: string): Promise<void> {
+    if (providerId === PROVIDER_ID) this.clear();
+  }
+
+  modify(
+    providerId: string,
+    fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+  ): Promise<Credential | undefined> {
+    if (providerId !== PROVIDER_ID) return Promise.resolve(undefined);
+    const run = this.tail.then(async () => {
+      const before = this.current();
+      let next: Credential | undefined;
+      try {
+        next = await fn(before);
+      } catch (e) {
+        if (isInvalidGrant(e)) {
+          this.clear();
+          log.error("anthropic refresh token rejected (invalid_grant); reseed required (auth.md)", e);
+        }
+        throw e;
+      }
+      if (next?.type !== "oauth") return before;
+      this.live = next;
+      log.info("anthropic token refreshed", {
+        expiresIso: new Date(next.expires).toISOString(),
+        rotatedRefresh: next.refresh !== before?.refresh,
+      });
+      try {
+        await this.patchSecret({ access: next.access, refresh: next.refresh, expires: next.expires });
+      } catch (e) {
+        log.error("token secret patch failed; a restart before the next refresh needs a reseed", e);
+      }
+      return next;
+    });
+    this.tail = run.catch(() => {});
+    return run;
+  }
+
+  expire(): void {
+    const cur = this.current();
+    if (cur) this.live = { ...cur, expires: 0 };
+  }
+
+  private clear(): void {
+    this.live = undefined;
+    fileCache.clear();
+  }
 }

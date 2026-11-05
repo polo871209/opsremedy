@@ -1,5 +1,5 @@
-import { Type } from "@earendil-works/pi-ai";
-import type { SreTool } from "./types.ts";
+import { bool, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { sreTool, type SreTool } from "./types.ts";
 import * as k8s from "@kubernetes/client-node";
 import { textResult, guarded } from "./result.ts";
 
@@ -12,6 +12,11 @@ function init() {
   else kc.loadFromDefault();
   _core = kc.makeApiClient(k8s.CoreV1Api);
   _apps = kc.makeApiClient(k8s.AppsV1Api);
+}
+
+export function k8sClients(): { core: k8s.CoreV1Api; apps: k8s.AppsV1Api } {
+  init();
+  return { core: _core!, apps: _apps! };
 }
 
 const STATE_MSG_MAX = 160;
@@ -49,29 +54,25 @@ function trimPod(p: k8s.V1Pod) {
 }
 
 function getPodsTool(appNamespace: string): SreTool {
-  return {
+  return sreTool({
     name: "k8s_get_pods",
     cheap: false,
     retry: true,
     description:
-      "List pods in a namespace with optional label/field selectors. " +
-      "Returns trimmed status only (phase, ready, restarts, node, startTime, containers, conditions, labels) — no PodSpec. " +
-      "Container images live in k8s_rollout_history, live requests/limits in k8s_get_deployments; env vars are exposed by no tool here, so read them from source instead of re-listing pods.",
-
-    parameters: Type.Object({
-      namespace: Type.Optional(
-        Type.String({
-          description:
-            `Application workloads run in '${appNamespace}'; pass it. Omitting scans every namespace and mostly returns platform pods.`,
+      "List pods with their status only: phase, readiness, restarts, node, container states, conditions and labels. " +
+      "Images come from k8s_list_images, and requests and limits from k8s_get_deployments. No tool reads env vars.",
+    parameters: obj({
+      namespace: opt(
+        str({
+          description: `Application workloads run in '${appNamespace}'. Without it, the list holds mostly platform pods.`,
         }),
       ),
-      labelSelector: Type.Optional(Type.String({ description: "e.g. app=foo,env=prod" })),
-      fieldSelector: Type.Optional(Type.String({ description: "e.g. status.phase!=Running" })),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 30 })),
+      labelSelector: opt(str({ description: "e.g. app=foo,env=prod" })),
+      fieldSelector: opt(str({ description: "e.g. status.phase!=Running" })),
+      limit: opt(int({ minimum: 1, maximum: 200, default: 30 })),
     }),
-    execute: guarded(async (args) => {
+    execute: guarded(async (a) => {
       init();
-      const a = args as { namespace?: string; labelSelector?: string; fieldSelector?: string; limit?: number };
       const res = a.namespace
         ? await _core!.listNamespacedPod({
             namespace: a.namespace,
@@ -86,7 +87,7 @@ function getPodsTool(appNamespace: string): SreTool {
           });
       return textResult({ count: res.items.length, pods: res.items.map(trimPod) });
     }),
-  };
+  });
 }
 
 // Line-level window clamp. The kubelet log API bounds only the START of the
@@ -121,39 +122,29 @@ function windowLines(
 }
 
 function podLogsTool(): SreTool {
-  return {
+  return sreTool({
     name: "k8s_pod_logs",
     cheap: false,
     retry: true,
     description:
-      "Tail one pod's live log buffer, clamped to the alert window, one RFC3339 timestamp per line. " +
-      "Raw lines, no dedupe or aggregation — for a single suspect pod, or previous=true for a crash the pod did not survive. " +
-      "Anything cross-service, aggregated, or older than the current buffer belongs to gcp_logging_query.",
-    parameters: Type.Object({
-      namespace: Type.String(),
-      name: Type.String({ description: "Pod name" }),
-      container: Type.Optional(Type.String({ description: "Required when the pod runs several containers" })),
-      tail: Type.Optional(Type.Integer({ minimum: 1, maximum: 500, default: DEFAULT_TAIL })),
-      previous: Type.Optional(
-        Type.Boolean({
+      "Tail the live log buffer of one suspect pod in the alert window, as raw timestamped lines. " +
+      "For cross-service logs, grouped logs or logs older than the buffer, use gcp_logging_query.",
+    parameters: obj({
+      namespace: str(),
+      name: str({ description: "Pod name" }),
+      container: opt(str({ description: "Required when the pod runs several containers" })),
+      tail: opt(int({ minimum: 1, maximum: 500, default: DEFAULT_TAIL })),
+      previous: opt(
+        bool({
           description:
-            "Logs of the instance before the last restart, the only way to see a CrashLoopBackOff/OOMKill. Not window-clamped: a terminated buffer may predate the window entirely.",
+            "Logs of the container before its last restart, for a CrashLoopBackOff or an OOMKill. These ignore the alert window and can predate it.",
         }),
       ),
-      startTime: Type.Optional(Type.String({ description: "ISO8601 or unix-ms/sec. Clamped to the alert window." })),
-      endTime: Type.Optional(Type.String({ description: "ISO8601 or unix-ms/sec. Clamped to the alert window." })),
+      startTime: opt(str({ description: "ISO8601 or unix-ms/sec. Clamped to the alert window." })),
+      endTime: opt(str({ description: "ISO8601 or unix-ms/sec. Clamped to the alert window." })),
     }),
-    execute: guarded(async (args, tw) => {
+    execute: guarded(async (a, tw) => {
       init();
-      const a = args as {
-        namespace: string;
-        name: string;
-        container?: string;
-        tail?: number;
-        previous?: boolean;
-        startTime?: string;
-        endTime?: string;
-      };
       const win = tw.clamp({ startTime: a.startTime, endTime: a.endTime });
       const tail = a.tail ?? DEFAULT_TAIL;
       const now = Date.now();
@@ -184,36 +175,29 @@ function podLogsTool(): SreTool {
         logs: lines.join("\n"),
       });
     }),
-  };
+  });
 }
 
 function eventsTool(): SreTool {
-  return {
+  return sreTool({
     name: "k8s_get_events",
     cheap: false,
     retry: true,
     description:
-      "Recent cluster events (OOMKilled, evictions, scheduling and probe failures) — the fastest read on whether a fault is infrastructure rather than application. " +
-      "NOT window-clamped, and the cluster retains only ~1h: an older alert window returns events that POSTDATE it, and a symptom older than ~1h has none left. " +
-      "Check each lastTimestamp against the window before citing an event as onset evidence.",
-    parameters: Type.Object({
-      namespace: Type.Optional(Type.String({ description: "Omit for all namespaces" })),
-      type: Type.Optional(
-        Type.Union([Type.Literal("Warning"), Type.Literal("Normal"), Type.Literal("All")], { default: "Warning" }),
-      ),
-      involvedObjectName: Type.Optional(Type.String({ description: "Pod / deployment / service name" })),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+      "Recent cluster events such as OOMKilled, evictions, scheduling and probe failures. Use them to tell an infrastructure fault from an application fault. " +
+      "The tool ignores the alert window, and the cluster keeps about 1 h of events. Compare each lastTimestamp with the window before you cite the event. " +
+      "type defaults to Warning. type=All returns every type.",
+    parameters: obj({
+      namespace: opt(str({ description: "Omit for all namespaces" })),
+      type: opt(oneOf(["Warning", "Normal", "All"], { default: "Warning" })),
+      involvedObjectName: opt(str({ description: "Pod / deployment / service name" })),
+      limit: opt(int({ minimum: 1, maximum: 200, default: 50 })),
     }),
-    execute: guarded(async (args) => {
+    execute: guarded(async (a) => {
       init();
-      const a = args as {
-        namespace?: string;
-        type?: "Warning" | "Normal" | "All";
-        involvedObjectName?: string;
-        limit?: number;
-      };
       const sel: string[] = [];
-      if (a.type && a.type !== "All") sel.push(`type=${a.type}`);
+      const type = a.type ?? "Warning";
+      if (type !== "All") sel.push(`type=${type}`);
       if (a.involvedObjectName) sel.push(`involvedObject.name=${a.involvedObjectName}`);
       const fieldSelector = sel.join(",") || undefined;
       const res = a.namespace
@@ -233,26 +217,25 @@ function eventsTool(): SreTool {
         .slice(0, a.limit ?? 50);
       return textResult({ count: items.length, events: items });
     }),
-  };
+  });
 }
 
 function getDeploymentsTool(appNamespace: string): SreTool {
-  return {
+  return sreTool({
     name: "k8s_get_deployments",
     cheap: false,
     retry: true,
     description:
-      "Deployment replica health (replicas/available/ready/updated, conditions) + selector — use it to tell 'pods missing' from 'pods unhealthy', and to get the selector for k8s_get_pods. " +
-      "Also returns each container's live cpu/memory requests and limits: the number to compare an OOMKill or a heap ceiling against. " +
-      `ALWAYS pass namespace ('${appNamespace}' for application workloads) plus a labelSelector: an unscoped list is mostly platform workloads and huge.`,
-    parameters: Type.Object({
-      namespace: Type.Optional(Type.String({ description: `Application workloads run in '${appNamespace}'` })),
-      labelSelector: Type.Optional(Type.String({ description: "e.g. app=foo" })),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 30 })),
+      "Replica counts, conditions, selector, and the live cpu and memory requests and limits of each container. " +
+      "Compare an OOMKill or a heap ceiling with these limits. " +
+      "Pass namespace and labelSelector, because an unscoped list is large.",
+    parameters: obj({
+      namespace: opt(str({ description: `Application workloads run in '${appNamespace}'` })),
+      labelSelector: opt(str({ description: "e.g. app=foo" })),
+      limit: opt(int({ minimum: 1, maximum: 200, default: 30 })),
     }),
-    execute: guarded(async (args) => {
+    execute: guarded(async (a) => {
       init();
-      const a = args as { namespace?: string; labelSelector?: string; limit?: number };
       const res = a.namespace
         ? await _apps!.listNamespacedDeployment({
             namespace: a.namespace,
@@ -277,25 +260,24 @@ function getDeploymentsTool(appNamespace: string): SreTool {
       }));
       return textResult({ count: items.length, deployments: items });
     }),
-  };
+  });
 }
 
 function rolloutHistoryTool(): SreTool {
-  return {
+  return sreTool({
     name: "k8s_rollout_history",
     cheap: false,
     retry: true,
     description:
-      "Deployment revision history, newest first: revision, creationTimestamp, replicas/ready, container images. " +
-      "The check for a deploy-induced cause: compare a revision's creationTimestamp against symptom onset. Also the only source of the running image tag.",
-    parameters: Type.Object({
-      namespace: Type.String(),
-      name: Type.String({ description: "Deployment name" }),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20, default: 10 })),
+      "Revision history of one Deployment, newest first, with creation time, replicas and images. " +
+      "Compare the creationTimestamp of a revision with the symptom onset before you blame a deploy.",
+    parameters: obj({
+      namespace: str(),
+      name: str({ description: "Deployment name" }),
+      limit: opt(int({ minimum: 1, maximum: 20, default: 10 })),
     }),
-    execute: guarded(async (args) => {
+    execute: guarded(async (a) => {
       init();
-      const a = args as { namespace: string; name: string; limit?: number };
       const dep = await _apps!.readNamespacedDeployment({ namespace: a.namespace, name: a.name });
       const uid = dep.metadata?.uid;
       const selector = dep.spec?.selector?.matchLabels;
@@ -324,7 +306,101 @@ function rolloutHistoryTool(): SreTool {
         revisions,
       });
     }),
-  };
+  });
+}
+
+function nodesTool(): SreTool {
+  return sreTool({
+    name: "k8s_get_nodes",
+    cheap: false,
+    retry: true,
+    description:
+      "Production Kubernetes nodes, grouped by node pool, machine type, OS image, kernel, container runtime, kubelet and architecture. " +
+      "It does not see VMs outside the cluster.",
+    parameters: obj({}),
+    execute: guarded(async () => {
+      init();
+      const res = await _core!.listNode();
+      const groups = new Map<string, { nodes: string[]; notReady: number } & Record<string, unknown>>();
+      for (const n of res.items) {
+        const info = n.status?.nodeInfo;
+        const labels = n.metadata?.labels ?? {};
+        const facts = {
+          pool: labels["cloud.google.com/gke-nodepool"],
+          machineType: labels["node.kubernetes.io/instance-type"],
+          osImage: info?.osImage,
+          kernelVersion: info?.kernelVersion,
+          containerRuntimeVersion: info?.containerRuntimeVersion,
+          kubeletVersion: info?.kubeletVersion,
+          architecture: info?.architecture,
+        };
+        const key = JSON.stringify(facts);
+        const group = groups.get(key) ?? { ...facts, nodes: [], notReady: 0 };
+        group.nodes.push(n.metadata?.name ?? "");
+        if (n.status?.conditions?.find((c) => c.type === "Ready")?.status !== "True") group.notReady++;
+        groups.set(key, group);
+      }
+      const items = [...groups.values()].map((g) => ({ ...g, count: g.nodes.length }));
+      return textResult({ nodes: res.items.length, groups: items });
+    }),
+  });
+}
+
+function workloadOf(p: k8s.V1Pod): string {
+  const owner = p.metadata?.ownerReferences?.[0];
+  if (!owner) return `Pod/${p.metadata?.name}`;
+  if (owner.kind === "ReplicaSet") return `Deployment/${owner.name.replace(/-[a-z0-9]+$/, "")}`;
+  if (owner.kind === "Job") return `Job/${owner.name.replace(/-\d+$/, "")}`;
+  return `${owner.kind}/${owner.name}`;
+}
+
+function imagesTool(appNamespace: string): SreTool {
+  return sreTool({
+    name: "k8s_list_images",
+    cheap: false,
+    retry: true,
+    description:
+      "Every image that runs in the production cluster now, init containers included, with its pod count and workloads. " +
+      "Use it for the running version of a component, because a manifest tag such as latest can move. " +
+      "With namespace or match, each line also gives the resolved digests.",
+    parameters: obj({
+      namespace: opt(
+        str({ description: `Application workloads run in '${appNamespace}'. Omit it to read every namespace.` }),
+      ),
+      match: opt(
+        str({ description: "Case-insensitive text that the image reference must contain, for example 'envoy'." }),
+      ),
+    }),
+    execute: guarded(async (a) => {
+      init();
+      const res = a.namespace
+        ? await _core!.listNamespacedPod({ namespace: a.namespace, fieldSelector: "status.phase=Running" })
+        : await _core!.listPodForAllNamespaces({ fieldSelector: "status.phase=Running" });
+      const needle = a.match?.toLowerCase();
+      const images = new Map<string, { image: string; digests: Set<string>; workloads: Set<string>; pods: number }>();
+      for (const p of res.items) {
+        const statuses = [...(p.status?.initContainerStatuses ?? []), ...(p.status?.containerStatuses ?? [])];
+        for (const c of statuses) {
+          if (needle && !c.image.toLowerCase().includes(needle)) continue;
+          const entry = images.get(c.image) ?? { image: c.image, digests: new Set(), workloads: new Set(), pods: 0 };
+          const digest = c.imageID.split("@")[1];
+          if (digest) entry.digests.add(digest);
+          entry.workloads.add(`${p.metadata?.namespace}/${workloadOf(p)}`);
+          entry.pods++;
+          images.set(c.image, entry);
+        }
+      }
+      const scoped = Boolean(a.namespace || a.match);
+      const lines = [...images.values()]
+        .sort((x, y) => x.image.localeCompare(y.image))
+        .map((e) => {
+          const digests = scoped && e.digests.size ? ` digests=${[...e.digests].join(",")}` : "";
+          return `${e.image} pods=${e.pods} workloads=${[...e.workloads].join(",")}${digests}`;
+        });
+      const head = `${lines.length} images in ${res.items.length} running pods${scoped ? "" : ". Pass namespace or match to see digests."}`;
+      return { content: [{ type: "text", text: [head, ...lines].join("\n") }] };
+    }),
+  });
 }
 
 export function kubernetesTools(appNamespace: string): SreTool[] {
@@ -334,5 +410,7 @@ export function kubernetesTools(appNamespace: string): SreTool[] {
     eventsTool(),
     getDeploymentsTool(appNamespace),
     rolloutHistoryTool(),
+    nodesTool(),
+    imagesTool(appNamespace),
   ];
 }

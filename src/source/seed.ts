@@ -1,32 +1,17 @@
 import { readFileSync, existsSync } from "node:fs";
+import { arr, compile, map, obj, str, unknown, type Static } from "@earendil-works/pi-schema";
 import { parse } from "yaml";
 import type { Alert } from "../alert.ts";
 import { log } from "../utils/logger.ts";
 
-interface SeedCallSpec {
-  tool: string;
-  args: Record<string, unknown>;
-}
-interface SeedCallRule {
-  alertNamePattern: string;
-  calls: SeedCallSpec[];
-}
+const SeedCallSchema = obj({ tool: str(), args: map(unknown()) });
+const SeedCallRuleSchema = obj({ alertNamePattern: str(), calls: arr(SeedCallSchema) });
+
+export type SeedCall = Static<typeof SeedCallSchema>;
+type SeedCallRule = Static<typeof SeedCallRuleSchema>;
 export type SeedCallsConfig = SeedCallRule[];
 
-export interface SeedCall {
-  tool: string;
-  args: Record<string, unknown>;
-}
-
-function isRule(v: unknown): v is SeedCallRule {
-  if (!v || typeof v !== "object") return false;
-  const rule = v as Partial<SeedCallRule>;
-  return (
-    typeof rule.alertNamePattern === "string" &&
-    Array.isArray(rule.calls) &&
-    rule.calls.every((c) => typeof c?.tool === "string" && !!c.args && typeof c.args === "object")
-  );
-}
+const seedCallRule = compile(SeedCallRuleSchema);
 
 let _cfg: SeedCallsConfig | undefined;
 export function loadSeedCalls(): SeedCallsConfig {
@@ -40,9 +25,11 @@ export function loadSeedCalls(): SeedCallsConfig {
   try {
     const parsed: unknown = parse(readFileSync(path, "utf8")) ?? [];
     if (!Array.isArray(parsed)) throw new Error("top level must be a list of rules");
-    _cfg = parsed.filter(isRule);
-    if (_cfg.length < parsed.length)
-      log.warn("seed call rules dropped: malformed", { path, dropped: parsed.length - _cfg.length });
+    _cfg = [];
+    for (const [i, rule] of parsed.entries()) {
+      if (seedCallRule.check(rule)) _cfg.push(rule);
+      else log.warn("seed call rule dropped: malformed", { path, rule: i, errors: seedCallRule.errors(rule) });
+    }
     log.info("seed calls loaded", { path, rules: _cfg.length });
   } catch (e) {
     log.warn("seed calls config invalid; feature off", { path, error: String(e) });

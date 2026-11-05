@@ -3,6 +3,7 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 import {
   AssistantEntry,
   configure,
+  ConversationIdle,
   defineTask,
   LiveDoc,
   type ConversationId,
@@ -73,24 +74,34 @@ export const ReplyTask = defineTask<ReplyInput, ReplyState, null>({
         const id = await target(runtime, context);
         const handle = await runtime.conversation(id, context);
         if (!handle) throw new Error(`conversation ${id} is gone`);
-        let text: string;
-        if (await isBusy(runtime, id, context)) {
-          const granted = (await runtime.snapshot(ThreadDoc, id, context))?.maintainer ?? false;
-          text = steeringTurn(input.text, granted && !input.maintainer);
+        const requestId = `lark:${input.messageId}`;
+        const content = (text: string) => [{ type: "text" as const, text }, ...input.images];
+        const granted = (await runtime.snapshot(ThreadDoc, id, context))?.maintainer ?? false;
+        try {
+          const submission = await handle.submit(
+            {
+              type: "input",
+              content: content(steeringTurn(input.text, granted && !input.maintainer)),
+              whenBusy: "steer",
+              whenIdle: "reject",
+              requestId,
+            },
+            context,
+          );
           log.info("lark message steered into the running reply", labels);
-        } else {
-          await runtime.commit(async (tx) => {
-            await configure(tx, id, agentFor(cfg, "followup", input.maintainer));
-            const thread = await tx.doc(ThreadDoc, id);
-            thread.maintainer = input.maintainer;
-            thread.budget = null;
-            return undefined;
-          }, context);
-          text = followupTurn(input.text);
+          return { id, handle, submission };
+        } catch (e) {
+          if (!(e instanceof ConversationIdle)) throw e;
         }
-        const content = [{ type: "text" as const, text }, ...input.images];
+        await runtime.commit(async (tx) => {
+          await configure(tx, id, agentFor(cfg, "followup", input.maintainer));
+          const thread = await tx.doc(ThreadDoc, id);
+          thread.maintainer = input.maintainer;
+          thread.budget = null;
+          return undefined;
+        }, context);
         const submission = await handle.submit(
-          { type: "input", content, whenBusy: "steer", requestId: `lark:${input.messageId}` },
+          { type: "input", content: content(followupTurn(input.text)), whenBusy: "steer", requestId },
           context,
         );
         return { id, handle, submission };
@@ -99,10 +110,9 @@ export const ReplyTask = defineTask<ReplyInput, ReplyState, null>({
       const outcome = await waitWithWatchdog(submitted.handle, submitted.submission, ms, undefined, context);
       const failure = failureText(outcome, ms);
       const { settled } = outcome;
-      if (failure && settled.status === "unanswered" && settled.reason !== "aborted") {
-        // pi-durable leaves steers queued after a failed run, with no run to place them, so their tasks would wait forever.
-        await submitted.handle.abort(context).catch(() => {});
-      }
+      const withdrawn =
+        settled.status === "unanswered" &&
+        ((settled.reason === "aborted" && !outcome.stalled) || settled.reason === "run_failed");
       await runtime.commit(async (tx) => {
         if (settled.status === "done" && settled.type === "input") {
           const answer = await tx.entry(AssistantEntry, settled.answer);
@@ -115,7 +125,7 @@ export const ReplyTask = defineTask<ReplyInput, ReplyState, null>({
             checkpoint: { phase: "send", text: textOf(answer?.model?.[0]) || "(no response)" },
           };
         }
-        if (!failure || (settled.status === "unanswered" && settled.reason === "aborted" && !outcome.stalled)) {
+        if (!failure || withdrawn) {
           return { status: "running", checkpoint: { phase: "send", text: null } };
         }
         if (!noteModelError(failure, labels)) log.warn("follow-up failed", { ...labels, error: failure });

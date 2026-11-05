@@ -2,14 +2,16 @@ import type { AgentChange } from "@earendil-works/pi-durable";
 import type { Alert } from "./alert.ts";
 import type { Config } from "./config.ts";
 import type { Diagnosis } from "./diagnosis.ts";
-import { submitDiagnosisTool } from "./harness/tools.ts";
+import { submitAssessmentTool, submitDiagnosisTool } from "./harness/tools.ts";
 import { buildModel } from "./model.ts";
 import {
+  assessPrompt,
   DIAGNOSIS_SYSTEM_PROMPT,
   formatAlertContext,
   MAINTAINER_BLOCK,
   systemPrompt,
   untrusted,
+  VERDICT_SYSTEM_PROMPT,
 } from "./prompt.ts";
 import { buildSeedContext, loadSeedCalls, resolveSeedCalls } from "./source/seed.ts";
 import { resolveTools } from "./tools/registry.ts";
@@ -24,10 +26,12 @@ export interface InvestigationResult {
   cost?: number;
 }
 
-export type AgentMode = "investigate" | "followup" | "diagnose";
+export type AgentMode = "investigate" | "followup" | "diagnose" | "assess" | "verdict";
 
 function modePrompt(cfg: Config, mode: AgentMode, maintainer = false): string {
   if (mode === "diagnose") return DIAGNOSIS_SYSTEM_PROMPT;
+  if (mode === "verdict") return VERDICT_SYSTEM_PROMPT;
+  if (mode === "assess") return assessPrompt(cfg);
   const base = systemPrompt(cfg);
   return maintainer ? `${base}\n\n${MAINTAINER_BLOCK}` : base;
 }
@@ -42,12 +46,23 @@ function modelChoice(cfg: Config, modelId: string): Pick<AgentChange, "model" | 
 
 export function agentFor(cfg: Config, mode: AgentMode, maintainer = false): AgentChange {
   if (mode === "diagnose") {
-    return { ...modelChoice(cfg, cfg.model.synthesis), tools: [submitDiagnosisTool], instructions: modePrompt(cfg, mode) };
+    return {
+      ...modelChoice(cfg, cfg.model.synthesis),
+      tools: [submitDiagnosisTool],
+      instructions: modePrompt(cfg, mode),
+    };
   }
-  const modelId = mode === "investigate" ? cfg.model.investigation : cfg.model.synthesis;
+  if (mode === "verdict") {
+    return {
+      ...modelChoice(cfg, cfg.model.synthesis),
+      tools: [submitAssessmentTool],
+      instructions: modePrompt(cfg, mode),
+    };
+  }
+  const modelId = mode === "followup" ? cfg.model.synthesis : cfg.model.investigation;
   return {
     ...modelChoice(cfg, modelId),
-    tools: { remove: [submitDiagnosisTool] },
+    tools: { remove: [submitDiagnosisTool, submitAssessmentTool] },
     instructions: modePrompt(cfg, mode, maintainer),
   };
 }
@@ -59,11 +74,11 @@ export function budgetFor(cfg: Config, alert: Alert): number {
 
 async function seedCallsBlock(alert: Alert, cfg: Config): Promise<string> {
   const tw = makeTimeWindow(alert);
-  const seeds = resolveSeedCalls(
-    alert,
-    loadSeedCalls(),
-    buildSeedContext(alert, { start: tw.startISO(), end: tw.endISO() }, cfg.kubernetes.namespace),
-  );
+  const window = { start: tw.startISO(), end: tw.endISO() };
+  const seeds = [
+    ...(alert.seedCalls ?? []),
+    ...resolveSeedCalls(alert, loadSeedCalls(), buildSeedContext(alert, window, cfg.kubernetes.namespace)),
+  ];
   if (!seeds.length) return "";
   const tools = resolveTools(cfg);
   let block = "";

@@ -1,5 +1,5 @@
-import { Type } from "@earendil-works/pi-ai";
-import type { SreTool } from "./types.ts";
+import { arr, bool, int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { sreTool, type SreTool } from "./types.ts";
 import { Logging, type Entry } from "@google-cloud/logging";
 import { guarded, textResult } from "./result.ts";
 
@@ -34,6 +34,21 @@ function envoyField(m: Record<string, unknown>, p: Record<string, unknown>, key:
   const top = (m.httpRequest ?? {}) as Record<string, unknown>;
   const left = (p.httpRequest ?? {}) as Record<string, unknown>;
   return top[key] ?? left[key];
+}
+
+type JournalLine = { service: string; severity: string; message: string };
+
+// The Ops Agent ships every journald line of a GCE VM as INFO, so the level lives in MESSAGE:
+// Kafka log4j writes "[<time>] WARN ...", and Redis writes "<pid>:<role> <time> # ..." for a warning.
+const JOURNAL_PREFIX = /^(?:\[[^\]]*\]\s*|\d+:[A-Z] \d{1,2} \w{3} \d{4} [\d:.]+ )/;
+
+function journalLine(p: Record<string, unknown> | undefined): JournalLine | undefined {
+  const unit = p?._SYSTEMD_UNIT;
+  const raw = p?.MESSAGE;
+  if (typeof unit !== "string" || typeof raw !== "string") return undefined;
+  const message = raw.replace(JOURNAL_PREFIX, "");
+  const severity = /^ERROR\b/.test(message) ? "ERROR" : /^(WARN\b|# )/.test(message) ? "WARNING" : "INFO";
+  return { service: `${p?._HOSTNAME ?? "?"}/${unit.replace(/\.service$/, "")}`, severity, message };
 }
 
 const PATH_ID_RE = /\b(?:[0-9a-f]{8,}|[0-9]{2,}|[0-9a-f]{4,}-[0-9a-f-]+)\b/gi;
@@ -197,32 +212,28 @@ function aggregateEnvoy(rows: EnvoyRowIn[]): EnvoyAgg[] {
     .sort((a, b) => b.error_count - a.error_count || b.count - a.count);
 }
 
-const FILTER_HELP = `Logging query language filter.
-ALWAYS scope it: resource.type AND a service selector (resource.labels.container_name / service_name / namespace_name). Dedupe keeps services separate, but an unscoped filter spends the whole page on whichever service is noisiest, so the one you care about never appears.
-Prefer jsonPayload.<field> over textPayload: services emit structured JSON, textPayload matches only stringified logs.
-Field homes differ because the GKE agent lifts GCP special fields onto the entry: top level = severity, timestamp, trace, spanId, labels.*, httpRequest.{requestMethod,requestUrl,status,remoteIp,userAgent,protocol}; payload = jsonPayload.{message,response_flags,duration_ms,upstream_host,upstream_service_time_ms} and jsonPayload.httpRequest.requestId (no room for it in the HttpRequest proto).
-response_flags="-" means no flags set, not a missing field.
-Unknown failure with no better lead: severity>=ERROR plus the suspect container.
-severity ladder: DEBUG < INFO < NOTICE < WARNING < ERROR < CRITICAL < ALERT < EMERGENCY.
+function filterHelp(project: string): string {
+  return `Logging query language filter. The tool adds the time window, so never write a timestamp clause.
+Scope every filter with resource.type plus a service selector. An unscoped filter fills the page with the noisiest service.
+Services log JSON, so match jsonPayload.<field>. textPayload matches only plain-text logs.
+Top-level fields: severity, trace, spanId, labels.*, httpRequest.{requestMethod,requestUrl,status,remoteIp,userAgent,protocol}.
+Envoy payload fields: jsonPayload.{response_flags,duration_ms,upstream_host,upstream_service_time_ms,upstream_transport_failure_reason,connection_termination_details,httpRequest.requestId}. response_flags="-" means no flags.
 Examples:
-- severity>=ERROR
-- resource.type="k8s_container" AND resource.labels.namespace_name="default"
-- textPayload:"database connection failed"
-- jsonPayload.message=~"timeout"
 - jsonPayload."service.name"="<service>"  // OpenTelemetry service name, when the app logs it
-- jsonPayload.job="<cronjob name>"  // whole CronJob run's output
-- jsonPayload.httpRequest.requestId="<id>"  // pinpoint one envoy entry from aggregate sample_request_id
-- httpRequest.status>=500 AND jsonPayload.response_flags!="-"  // envoy-side failures only
-- trace="projects/<project>/traces/<sample_trace>"  // ALL log lines for one request across services
+- jsonPayload.job="<cronjob name>"  // one CronJob run
+- httpRequest.status>=500 AND jsonPayload.response_flags!="-"  // envoy-side failures
+- trace="projects/${project}/traces/<id>"  // every line of one request, across services
 Layer selectors:
 - envoy sidecar or gateway: resource.labels.container_name="istio-proxy" AND labels."logging.gke.io/top_level_controller_name"="<controller>"
-- backend container: resource.type="k8s_container" AND resource.labels.container_name="<service>"
-- Cloud Function: resource.type="cloud_function" AND resource.labels.function_name="<name>"
-Cloud Audit Logs are ORDINARY entries in this same tool, not a separate stream. Caller identity lives in protoPayload.authenticationInfo.principalEmail, the call in protoPayload.methodName + protoPayload.serviceName:
-- logName="projects/<project>/logs/cloudaudit.googleapis.com%2Factivity"  // admin/config writes, always on, every service
-- logName="projects/<project>/logs/cloudaudit.googleapis.com%2Fdata_access"  // per-caller API reads, OFF unless enabled per service
-Which caller drove a read/query spike is answerable ONLY from data_access, and it exists only for the services the project auditConfigs enable. If a service has no data_access entries, say the log source is missing and name enabling DATA_READ for that service as the human fix.
-An EMPTY data_access result proves nothing on its own. Two causes collapse into the same empty page: the audit config is off, or the entries exist and this agent's SA cannot see them (reading them needs roles/logging.privateLogViewer, which it does not hold, and private entries are filtered out silently instead of denied). Report it as "no readable audit entries", never as "auditing is off".`;
+- Deployment or CronJob: resource.type="k8s_container" AND resource.labels.container_name="<service>"
+- Cloud Function (1st gen): resource.type="cloud_function" AND resource.labels.function_name="<name>"
+- Cloud Run service or Cloud Function (2nd gen): resource.type="cloud_run_revision" AND resource.labels.service_name="<name>"
+Audit logs are ordinary entries. protoPayload.authenticationInfo.principalEmail is the caller, and protoPayload.methodName is the call.
+- logName="projects/${project}/logs/cloudaudit.googleapis.com%2Factivity"  // admin writes, always on
+- logName="projects/${project}/logs/cloudaudit.googleapis.com%2Fdata_access"  // per-caller reads, off unless enabled per service
+Only data_access names the caller behind a read spike, and the project auditConfigs enable it per service. If a service has no data_access entries, report that gap, and name enabling DATA_READ for that service as the fix.
+An empty data_access result does not prove that auditing is off. This agent lacks roles/logging.privateLogViewer, and Cloud Logging hides those entries without an error. Report "no readable audit entries".`;
+}
 
 // The GCP Logging severity enum is case-sensitive and rejects lowercase or shorthand values with INVALID_ARGUMENT.
 const SEVERITY_ALIASES: Record<string, string> = {
@@ -251,7 +262,7 @@ const DENIED_HELP =
   "TERMINAL: Cloud Logging is unavailable for this agent's GCP identity. " +
   "No filter, project or resourceNames change fixes it — do not call gcp_logging_query again this session. " +
   "Continue with metrics, traces and source tools, and state in the diagnosis that log evidence was unreachable. " +
-  "Fix (human, once): grant roles/logging.viewer to the opsremedy service account.";
+  "Fix (human, once): grant roles/logging.viewer to the service account that opsremedy runs as.";
 const DENIED_VIEW_HELP =
   "The denial is on the resourceNames you passed, NOT on this project's default log scope. " +
   "Retry the same filter with resourceNames omitted before you give up on log evidence.";
@@ -290,64 +301,47 @@ function noMatchHints(filter: string): string[] {
 }
 
 export function gcpLoggingTool(defaultProject: string): SreTool {
-  return {
+  return sreTool({
     name: "gcp_logging_query",
     cheap: false,
     retry: true,
     description:
-      "Search Google Cloud Logging within the alert window. Output is COMPACTED by default: " +
-      "(a) envoy access logs grouped by route + status_class + flags, each group carrying count, error_count, p50/p95/max latency, upstream_clusters, sample_trace, sample_request_id; " +
-      "(b) app logs deduped by (severity, service, message, error code/name), each carrying count, first/last timestamp, error_code/error_name, sample_trace, sample_span. " +
-      'Holding a sample_trace, re-query HERE FIRST with `trace="projects/<project>/traces/<sample_trace>"`: that returns every log line of that one request across every service and usually root-causes the issue on its own. Works for any sample_trace, sampled or not. ' +
-      "sample_trace_sampled=true means jaeger_get_trace WILL resolve that id; false means unknown, never proof the trace is missing — prefer a sampled id when several groups offer one. Reach for jaeger_get_trace only for span timing/topology the logs cannot give. " +
-      'To inspect one entry: re-query with an aggregate\'s sample_request_id (`httpRequest.requestId="..."`), or pass raw=true to skip compaction (costs context — only once compaction has pointed at the row).',
-    parameters: Type.Object({
-      filter: Type.String({ description: FILTER_HELP }),
-      resourceNames: Type.Optional(
-        Type.Array(Type.String(), {
-          description:
-            `Defaults to ["projects/${defaultProject}"]. Pass a log-bucket view ` +
-            `("projects/.../locations/.../buckets/.../views/...") only when the entries live outside that project.`,
+      "Search Cloud Logging in the alert window. The output is compacted by default. " +
+      "Envoy access logs group by route, status class and flags. App logs dedupe by severity, service, message and error code. " +
+      `With a sample_trace, query here first with trace="projects/${defaultProject}/traces/<id>". It returns every line of that request across services, sampled or not. ` +
+      "Call jaeger_get_trace only for span timing that the logs cannot give, and prefer a group with sample_trace_sampled=true. " +
+      'To open one envoy entry, query jsonPayload.httpRequest.requestId="<sample_request_id>". ' +
+      "Pass raw=true only after a group points at the row you need, because raw output costs much more context.",
+    parameters: obj({
+      filter: str({ description: filterHelp(defaultProject) }),
+      resourceNames: opt(
+        arr(str(), {
+          description: `Default ["projects/${defaultProject}"]. Pass a log-bucket view only for entries outside that project.`,
         }),
       ),
-      orderBy: Type.Optional(
-        Type.Union([Type.Literal("timestamp desc"), Type.Literal("timestamp asc")], {
-          description:
-            "Default 'timestamp desc' (newest first). 'timestamp asc' reads a failure from its onset forward.",
+      orderBy: opt(
+        oneOf(["timestamp desc", "timestamp asc"], {
+          description: "Default 'timestamp desc'. 'timestamp asc' reads a failure forward from its onset.",
         }),
       ),
-      pageSize: Type.Optional(
-        Type.Integer({
+      pageSize: opt(
+        int({
           minimum: 1,
           maximum: MAX_PAGE_SIZE,
-          description: `Max entries to return. Default ${DEFAULT_PAGE_SIZE}, max ${MAX_PAGE_SIZE}.`,
+          description: `Default ${DEFAULT_PAGE_SIZE}.`,
         }),
       ),
-      pageToken: Type.Optional(Type.String({ description: "nextPageToken from a prior response." })),
-      raw: Type.Optional(
-        Type.Boolean({
+      pageToken: opt(str({ description: "nextPageToken from a prior response." })),
+      raw: opt(
+        bool({
           description:
-            "Return raw log entries (no envoy aggregation, no app-log dedupe). " +
-            "Use only once an aggregate pointed at a specific row and you need its full payload (stack trace, exact body). " +
-            "Still capped at " +
-            String(MAX_PAGE_SIZE) +
-            " entries and ~32KB output.",
+            "Return the entries without grouping, for the full payload of one row: a stack trace or an exact body.",
         }),
       ),
-      startTime: Type.Optional(Type.String({ description: "ISO8601 or unix-ms/sec." })),
-      endTime: Type.Optional(Type.String({ description: "ISO8601 or unix-ms/sec." })),
+      startTime: opt(str({ description: "ISO8601 or unix-ms/sec." })),
+      endTime: opt(str({ description: "ISO8601 or unix-ms/sec." })),
     }),
-    execute: guarded(async (args, tw) => {
-      const a = args as {
-        filter: string;
-        resourceNames?: string[];
-        orderBy?: "timestamp desc" | "timestamp asc";
-        pageSize?: number;
-        pageToken?: string;
-        startTime?: string;
-        endTime?: string;
-        raw?: boolean;
-      };
+    execute: guarded(async (a, tw) => {
       const win = tw.clamp({ startTime: a.startTime, endTime: a.endTime });
       const cleanFilter = normalizeSeverity(a.filter.replace(/\s*(AND|OR)\s*$/i, "").trim());
       const scopedFilter = `(${cleanFilter}) AND timestamp>="${win.startISO}" AND timestamp<"${win.endISO}"`;
@@ -376,6 +370,18 @@ export function gcpLoggingTool(defaultProject: string): SreTool {
         const res = m.resource as { type?: string; labels?: Record<string, string> } | undefined;
         const jp = (m.jsonPayload ?? (typeof e.data === "object" ? e.data : undefined)) as
           Record<string, unknown> | undefined;
+        const journal = journalLine(typeof e.data === "object" ? (e.data as Record<string, unknown>) : jp);
+        if (journal) {
+          return {
+            ts: m.timestamp as string | undefined,
+            meta: m,
+            severity: journal.severity,
+            service: journal.service,
+            text: journal.message,
+            payload: { message: journal.message.replace(PATH_ID_RE, "<id>") } as Record<string, unknown>,
+            ...extractTrace(m, jp),
+          };
+        }
         return {
           ts: m.timestamp as string | undefined,
           meta: m,
@@ -484,5 +490,5 @@ export function gcpLoggingTool(defaultProject: string): SreTool {
         ],
       };
     }),
-  };
+  });
 }

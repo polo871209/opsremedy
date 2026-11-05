@@ -1,5 +1,5 @@
-import { Type } from "@earendil-works/pi-ai";
-import type { SreTool } from "./types.ts";
+import { int, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
+import { sreTool, type SreTool } from "./types.ts";
 import { textResult, guarded } from "./result.ts";
 import { promFetch } from "./prom.ts";
 
@@ -65,36 +65,31 @@ const FLEETS: Record<string, { expr: string; label: string; unit: string }> = {
 };
 
 export function moversTool(promUrl: string): SreTool {
-  return {
+  return sreTool({
     name: "promql_movers",
     cheap: false,
     retry: true,
     description:
-      "Attribute a spike to a workload. Give it the spike window; it ranks every container, Cloud Function or Cloud Run service by how much it rose IN that window against the rest of the queried range, and returns the movers. " +
-      "Reach for it whenever the alerting metric is GCP-level and names no caller (Firestore reads, Cloud SQL connections, egress) or when a per-service counter stays flat and you are about to rule that fleet out. " +
-      "An EMPTY movers list is a real result, not a failure: no workload in that fleet moved, so the caller runs outside it (another fleet, or outside this project entirely — a laptop, Cloud Shell or external tool holding service-account credentials). Check the other fleets before concluding.",
-    parameters: Type.Object({
-      fleet: Type.Union(
-        [Type.Literal("k8s"), Type.Literal("cloud_functions"), Type.Literal("cloud_run"), Type.Literal("custom")],
-        {
-          description:
-            "Which fleet to rank. Run k8s and cloud_functions before ruling a caller out; 'custom' needs `query`.",
-        },
-      ),
-      spikeStart: Type.String({
-        description: "ISO8601 or unix-ms/sec. Start of the spike itself, not of the alert window.",
+      "Rank the workloads of one fleet by how much each rose in the spike window against the 30 min on each side. " +
+      "Use it when the alerting metric names no caller (Firestore reads, Cloud SQL connections, egress), and before you rule out a fleet whose own counter is flat. " +
+      "An empty movers_rose list is a result: that fleet did not move.",
+    parameters: obj({
+      fleet: oneOf(["k8s", "cloud_functions", "cloud_run", "custom"], {
+        description: "Run k8s and cloud_functions before you rule out a caller. 'custom' needs `query`.",
       }),
-      spikeEnd: Type.String({ description: "ISO8601 or unix-ms/sec. End of the spike." }),
-      query: Type.Optional(
-        Type.String({
+      spikeStart: str({
+        description: "ISO8601 or unix-ms/sec. The start of the spike, not of the alert window.",
+      }),
+      spikeEnd: str({ description: "ISO8601 or unix-ms/sec. End of the spike." }),
+      query: opt(
+        str({
           description:
-            "fleet='custom' only: a PromQL expression aggregating to ONE label, e.g. sum by (pod)(rate(x[3m])). The label value becomes the mover name.",
+            "fleet='custom' only. PromQL that aggregates to one label, for example sum by (pod)(rate(x[3m])). The label value names each mover.",
         }),
       ),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, default: 10 })),
+      limit: opt(int({ minimum: 1, maximum: 30, default: 10 })),
     }),
-    execute: guarded(async (args, tw) => {
-      const a = args as { fleet: string; spikeStart: string; spikeEnd: string; query?: string; limit?: number };
+    execute: guarded(async (a, tw) => {
       const fleet = FLEETS[a.fleet];
       const expr = a.fleet === "custom" ? a.query : fleet?.expr;
       if (!expr) return textResult("fleet='custom' requires `query`.", true);
@@ -148,5 +143,5 @@ export function moversTool(promUrl: string): SreTool {
               : "NOTHING in this fleet rose with the spike. Rule the whole fleet out and check the others; if every fleet is flat, the caller runs outside this project's compute and only Data Access audit logs can name it.",
       });
     }),
-  };
+  });
 }

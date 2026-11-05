@@ -106,6 +106,19 @@ function botWasInvited(items: ThreadItem[], botOpenId: string): boolean {
   return items.some((it) => it.senderType !== "app" && (it.mentionedOpenIds ?? []).includes(botOpenId));
 }
 
+function inHumanExchange(items: ThreadItem[], msg: IncomingMessage, botOpenId: string): boolean {
+  for (const it of items.toReversed()) {
+    if (it.messageId === msg.messageId) continue;
+    if (it.senderType === "app") return false;
+    const mentions = it.mentionedOpenIds ?? [];
+    if (mentions.includes(botOpenId)) return false;
+    if (mentions.length === 0) continue;
+    if (Date.now() - Number(it.createTime) > 10 * 60_000) return false;
+    return it.senderId === msg.senderId || mentions.includes(msg.senderId);
+  }
+  return false;
+}
+
 function threadStartedByBot(items: ThreadItem[]): boolean {
   return items[0]?.senderType === "app";
 }
@@ -305,6 +318,11 @@ export async function handleLarkMessage(msg: IncomingMessage): Promise<void> {
     return;
   }
   const priorUserTexts = priorUserMessages.map((m) => m.text).filter(Boolean);
+  if (!botMentioned && inHumanExchange(items, msg, botOpenId)) {
+    await recordSilently(threadKey, msg);
+    log.info("lark message dropped: sender is in a human exchange", { thread: threadKey });
+    return;
+  }
   const decision = botMentioned ? "REPLY" : await triage(msg.text, priorUserTexts, msg.imageKeys.length > 0);
   if (decision === "SKIP") {
     await recordSilently(threadKey, msg);

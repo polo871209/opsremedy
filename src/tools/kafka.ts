@@ -1,6 +1,6 @@
 import { Kafka, logLevel, type Admin, type logCreator } from "kafkajs";
-import { Type } from "@earendil-works/pi-ai";
-import type { SreTool } from "./types.ts";
+import { obj, str } from "@earendil-works/pi-schema";
+import { sreTool, type SreTool } from "./types.ts";
 import { textResult, errResult, guarded } from "./result.ts";
 import { log } from "../utils/logger.ts";
 
@@ -24,36 +24,35 @@ async function withAdmin<T>(kafka: Kafka, fn: (a: Admin) => Promise<T>): Promise
 }
 
 function listGroupsTool(kafka: Kafka): SreTool {
-  return {
+  return sreTool({
     name: "kafka_list_groups",
     cheap: true,
     retry: true,
     description:
-      "List consumer group ids known to the cluster. Use it to pin the exact id before kafka_describe_group — an alert label is often close but not identical.",
-    parameters: Type.Object({}),
+      "List consumer group ids. An alert label can differ from the real id, so take the exact id here before kafka_describe_group.",
+    parameters: obj({}),
     execute: guarded(async () => {
       const r = await withAdmin(kafka, (a) => a.listGroups());
       return textResult({ count: r.groups.length, groups: r.groups });
     }),
-  };
+  });
 }
 
 function describeGroupTool(kafka: Kafka): SreTool {
-  return {
+  return sreTool({
     name: "kafka_describe_group",
     cheap: false,
     retry: true,
     description:
-      "Consumer group health: state, members (clientId/clientHost), and per-topic-partition committedOffset vs. high/low watermark with lag. " +
-      "state=Empty or Dead with 0 members is the 'Kafka Consumer Group No Members' alert condition. " +
-      "Lag WITH members present means the worker is slow or stuck, not absent — pivot to k8s_get_pods / k8s_pod_logs on the mapped Deployment. " +
-      "One call is a point-in-time snapshot: for whether lag is GROWING, or whether the topic is still being produced to, " +
-      "run promql_range over kafka_consumergroup_lag / kafka_consumergroup_current_offset_sum (labels: consumergroup, topic).",
-    parameters: Type.Object({
-      groupId: Type.String(),
+      "Snapshot of one consumer group: state, members, and committed offset, watermarks and lag per partition. " +
+      "state Empty or Dead with 0 members is the 'Kafka Consumer Group No Members' condition. " +
+      "Lag with members present means a slow or stuck worker, so read the pods and logs of the consuming Deployment. " +
+      "For the lag trend, run promql_range on kminion_kafka_consumer_group_topic_lag or kminion_kafka_consumer_group_topic_offset_sum, by group_id and topic_name. " +
+      "For a stuck or memberless group, recommend a rollout restart of the consuming Deployment by a human.",
+    parameters: obj({
+      groupId: str(),
     }),
-    execute: guarded(async (args) => {
-      const { groupId } = args as { groupId: string };
+    execute: guarded(async ({ groupId }) => {
       const [state, offsets, watermarksByTopic] = await withAdmin(kafka, async (admin) => {
         const described = (await admin.describeGroups([groupId])).groups[0];
         const off = await admin.fetchOffsets({ groupId });
@@ -103,38 +102,36 @@ function describeGroupTool(kafka: Kafka): SreTool {
         lagByTopic,
       });
     }),
-  };
+  });
 }
 
 function listTopicsTool(kafka: Kafka): SreTool {
-  return {
+  return sreTool({
     name: "kafka_list_topics",
     cheap: true,
     retry: true,
     description: "List topic names. Use it to pin the exact topic before kafka_describe_topic.",
-    parameters: Type.Object({}),
+    parameters: obj({}),
     execute: guarded(async () => {
       const topics = await withAdmin(kafka, (a) => a.listTopics());
       return textResult({ count: topics.length, topics });
     }),
-  };
+  });
 }
 
 function describeTopicTool(kafka: Kafka): SreTool {
-  return {
+  return sreTool({
     name: "kafka_describe_topic",
     cheap: false,
     retry: true,
     description:
-      "Topic metadata: partitionCount, and per-partition leader/replicas/isr. " +
-      "underReplicated=true (isr shorter than replicas) is the fault signal — a replica broker is down or lagging, independent of consumer lag. " +
-      "A short replicas list is NOT a fault: that is the replication factor the topic was created with. " +
-      "Read partitionCount against kafka_describe_group's member count to tell 'too few partitions to parallelize' apart from 'workers are slow or stuck'.",
-    parameters: Type.Object({
-      topic: Type.String(),
+      "Topic partitions with leader, replicas and isr. underReplicated=true means a replica broker is down or behind. " +
+      "A short replicas list is the replication factor of the topic, not a fault. " +
+      "Compare partitionCount with the memberCount of kafka_describe_group to tell too few partitions from slow workers.",
+    parameters: obj({
+      topic: str(),
     }),
-    execute: guarded(async (args) => {
-      const { topic } = args as { topic: string };
+    execute: guarded(async ({ topic }) => {
       const { topics } = await withAdmin(kafka, (a) => a.fetchTopicMetadata({ topics: [topic] }));
       const meta = topics[0];
       if (!meta) return errResult(new Error(`topic not found: ${topic}`));
@@ -150,7 +147,7 @@ function describeTopicTool(kafka: Kafka): SreTool {
         })),
       });
     }),
-  };
+  });
 }
 
 export function kafkaTools(brokers: string[]): SreTool[] {

@@ -1,12 +1,13 @@
 import type { ToolCall } from "@earendil-works/pi-ai";
 import { defineTool, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
-import { DiagnosisSchema, type Diagnosis } from "../diagnosis.ts";
-import { buildEvidenceCorpus } from "../tools/evidence.ts";
+import { AssessmentSchema, type Assessment } from "../assessment.ts";
+import { DiagnosisSchema } from "../diagnosis.ts";
+import { buildEvidenceCorpus, isUngrounded } from "../tools/evidence.ts";
 import { reviewDiagnosis, SUBMIT_DIAGNOSIS, SUBMIT_DIAGNOSIS_DESCRIPTION } from "../tools/registry.ts";
 import type { SreTool } from "../tools/types.ts";
 import { log } from "../utils/logger.ts";
 import { makeTimeWindow } from "../utils/timewindow.ts";
-import { AlertDoc, alertOf, json, ThreadDoc } from "./docs.ts";
+import { AlertDoc, alertOf, AssessmentDoc, json, ThreadDoc } from "./docs.ts";
 import { allEntries, entriesSinceUser, messagesOf, roundsOf } from "./transcript.ts";
 
 const MAX_STAGNANT_ROUNDS = 2;
@@ -99,24 +100,68 @@ export function durableTool(tool: SreTool, cheap: ReadonlySet<string>): ToolRegi
       };
       if (verdict) {
         log.info("tool gated", { ...labels, isError: verdict.isError });
-        return { content: [{ type: "text", text: verdict.text }], isError: verdict.isError };
+        return { output: [{ type: "text", text: verdict.text }], isError: verdict.isError };
       }
       const started = Date.now();
       log.info("tool start", labels);
       const out = await tool.execute(args, makeTimeWindow(alertOf(alertDoc) ?? { name: "", source: "", severity: "" }));
       log.info("tool end", { ...labels, isError: out.isError === true, durationMs: Date.now() - started });
-      return { content: out.content, isError: out.isError === true };
+      return { output: out.content, isError: out.isError === true };
     },
   });
 }
+
+function assessmentRejection(a: Assessment, corpus: string): string | undefined {
+  if (!a.actionRequired) return undefined;
+  const bareLink = /(^|[^\\])\[[^\]\n]+\](?!\()/;
+  const lines = [
+    ...a.affected.map((l, i) => [`affected[${i}]`, l] as const),
+    ...a.evidence.map((l, i) => [`evidence[${i}]`, l] as const),
+    ...a.actions.map((l, i) => [`actions[${i}]`, l] as const),
+  ];
+  const badLinks = lines.filter(([, l]) => bareLink.test(l)).map(([k, l]) => `${k}: ${l}`);
+  if (badLinks.length) {
+    return `Rejected: bare [label] without (url). Write [label](https://...) or drop the brackets. Then call submit_assessment again.\n\nOffending lines:\n${badLinks.join("\n")}`;
+  }
+  if (!a.affected.length) {
+    return "Rejected: actionRequired is true, but affected is empty. Name each affected part, or set actionRequired to false.";
+  }
+  const ungrounded = a.evidence
+    .map((l, i) => (isUngrounded(l, corpus) ? `evidence[${i}]: ${l}` : undefined))
+    .filter((x): x is string => !!x);
+  if (corpus && ungrounded.length) {
+    return `Rejected: these evidence bullets share no number, identifier or path with any tool result. Cite what a tool returned, or drop the claim. Then call submit_assessment again.\n\nOffending lines:\n${ungrounded.join("\n")}`;
+  }
+  return undefined;
+}
+
+export const SUBMIT_ASSESSMENT = "submit_assessment";
+
+export const submitAssessmentTool = defineTool({
+  name: SUBMIT_ASSESSMENT,
+  description:
+    "Records the threat assessment verdict and ends the run. " +
+    "If actionRequired is true, it rejects a bare [label] with no (url), an empty affected list, and an evidence line that shares nothing with a tool result. " +
+    "A rejection names the lines. Fix them and call it again.",
+  parameters: AssessmentSchema,
+  replay: "safe",
+  execute: async (a, api, context): Promise<ToolExecutionResult> => {
+    const entries = await api.commit((tx) => allEntries(tx, api.conversationId), context);
+    const rejected = assessmentRejection(a, buildEvidenceCorpus(messagesOf(entries)));
+    if (rejected) return { output: [{ type: "text", text: rejected }] };
+    await api.commit(async (tx) => {
+      (await tx.doc(AssessmentDoc, api.conversationId)).assessment = json(a);
+    }, context);
+    return { output: [{ type: "text", text: "Assessment recorded." }], control: { terminate: true } };
+  },
+});
 
 export const submitDiagnosisTool = defineTool({
   name: SUBMIT_DIAGNOSIS,
   description: SUBMIT_DIAGNOSIS_DESCRIPTION,
   parameters: DiagnosisSchema,
   replay: "safe",
-  execute: async (args, api, context): Promise<ToolExecutionResult> => {
-    const d = args as Diagnosis;
+  execute: async (d, api, context): Promise<ToolExecutionResult> => {
     const [entries, thread] = await Promise.all([
       api.commit((tx) => allEntries(tx, api.conversationId), context),
       api.snapshot(ThreadDoc, api.conversationId, context),
@@ -129,11 +174,11 @@ export const submitDiagnosisTool = defineTool({
           (await tx.doc(ThreadDoc, api.conversationId)).groundingRejected = true;
         }, context);
       }
-      return { content: [{ type: "text", text: review.rejected }] };
+      return { output: [{ type: "text", text: review.rejected }] };
     }
     await api.commit(async (tx) => {
       (await tx.doc(ThreadDoc, api.conversationId)).diagnosis = json(d);
     }, context);
-    return { content: [{ type: "text", text: "Diagnosis recorded." }], control: { terminate: true } };
+    return { output: [{ type: "text", text: "Diagnosis recorded." }], control: { terminate: true } };
   },
 });

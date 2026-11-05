@@ -66,6 +66,15 @@ export function makeAlertGroupStore(dbPath: string, ttlSeconds: number): AlertGr
   return makeJsonStore<AlertGroup>(dbPath, "sre:alert-group:", ttlSeconds);
 }
 
+interface FeedPost {
+  guid: string;
+  rootMsgId: string;
+}
+export type FeedPostStore = KVStore<FeedPost>;
+export function makeFeedPostStore(dbPath: string, ttlSeconds: number): FeedPostStore {
+  return makeJsonStore<FeedPost>(dbPath, "sre:feed-post:", ttlSeconds);
+}
+
 export function makeIncidentStore(dbPath: string, ttlSeconds: number): IncidentStore {
   return makeKVStore<string>(
     dbPath,

@@ -23,7 +23,7 @@ export function progressCard(status: string): unknown {
   };
 }
 
-function collapsedPanel(title: string, lines: string[]): unknown {
+export function collapsedPanel(title: string, lines: string[]): unknown {
   return {
     tag: "collapsible_panel",
     expanded: false,

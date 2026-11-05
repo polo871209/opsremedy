@@ -14,10 +14,12 @@ import { models } from "../model.ts";
 import { resolveTools } from "../tools/registry.ts";
 import { log } from "../utils/logger.ts";
 import { ctx, harness, setHarness } from "./current.ts";
+import { DeployWatchTask } from "../deploy/watch.ts";
+import { ThreatAssessmentTask } from "../feed/assess.ts";
 import { InvestigationTask } from "./investigation.ts";
 import { ReplyTask } from "./reply.ts";
 import { pruneIdleThreads, type PruneResult } from "./retention.ts";
-import { durableTool, submitDiagnosisTool } from "./tools.ts";
+import { durableTool, submitAssessmentTool, submitDiagnosisTool } from "./tools.ts";
 
 function harnessFilePath(dbPath: string): string {
   return join(dirname(dbPath), "harness.sqlite");
@@ -34,8 +36,8 @@ export async function openHarness(cfg: Config): Promise<Harness> {
   registry.install(
     defineExtension({
       name: "sre",
-      tools: [...tools.map((t) => durableTool(t, cheap)), submitDiagnosisTool],
-      tasks: [InvestigationTask, ReplyTask],
+      tools: [...tools.map((t) => durableTool(t, cheap)), submitDiagnosisTool, submitAssessmentTool],
+      tasks: [InvestigationTask, ReplyTask, DeployWatchTask, ThreatAssessmentTask],
       hooks: [
         hook(GenerationTask, {
           afterResponse: (message, api) => {
@@ -56,8 +58,8 @@ export async function openHarness(cfg: Config): Promise<Harness> {
     {
       models,
       registry,
-      settings: { toolExecution: cfg.agent.toolExecution, steeringMode: "all" },
-      onReport: (error) => log.warn("harness report", { error: String(error) }),
+      settings: { toolExecution: cfg.agent.toolExecution, steeringMode: "all", afterFailedRun: "withdraw" },
+      onReport: ({ kind, error }) => log.warn("harness report", { kind, error: String(error) }),
     },
     ctx,
   );

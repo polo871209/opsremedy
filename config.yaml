@@ -26,6 +26,10 @@ systemContext: |
   - The ingress gateway emits envoy access logs. Each backend service emits its own app logs.
   - Async work moves over Kafka, not HTTP.
   - Workloads are Kubernetes Deployments in namespace `default`.
+# Parts of production that no tool reads, for the security feed threat assessment.
+assessContext: |
+  - Backend images build on node:24-slim. The runtime is Node.js 24.
+  - Kafka runs on GCE VMs outside the cluster, so no tool reads its version.
 gcp:
   project: example-gcp-project
 kubernetes:
@@ -42,3 +46,12 @@ grafana:
   url: https://grafana.example.com
 publicBaseUrl: https://opsremedy.example.com
 maintainerOpenIds: []
+# RSS feeds to post to Lark. Each new item also gets one threat assessment in its card's thread.
+# feeds:
+#   - url: https://feeds.example.com/security.rss
+#     chatId: oc_example
+# GitHub Actions workflow allowed to call POST /deploy/watch with its OIDC token.
+# deploy:
+#   repository: example-org/backend
+#   ref: refs/heads/main
+#   workflow: deploy-production.yml

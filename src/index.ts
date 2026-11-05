@@ -6,6 +6,7 @@ import {
   makeIncidentMetaStore,
   makeThreadMessagesCache,
   makeAlertGroupStore,
+  makeFeedPostStore,
 } from "./session/store.ts";
 import { sweepExpired } from "./session/sqlite-store.ts";
 import { closeHarness, openHarness, pruneHarness } from "./harness/harness.ts";
@@ -13,11 +14,14 @@ import type { ThreadItem } from "./lark/client.ts";
 import { initState, setBotOpenId } from "./state.ts";
 import { log } from "./utils/logger.ts";
 import { handleAlertWebhook } from "./gcp/webhook.ts";
+import { handleDeployWatch } from "./deploy/webhook.ts";
 import { handleSessionDump } from "./session/dump.ts";
 import { handleHandoffDump } from "./session/handoff.ts";
 import { handleLarkMessage } from "./lark/handler.ts";
 import { drain, DRAIN_TIMEOUT_MS } from "./utils/inflight.ts";
+import { models } from "./model.ts";
 import { startTokenRefresh } from "./utils/token-refresh.ts";
+import { startFeeds } from "./feed/watch.ts";
 
 const cfg = loadConfig("config.yaml");
 const port = Number(process.env.PORT ?? 8080);
@@ -62,6 +66,7 @@ const server = Bun.serve({
   routes: {
     "/healthz": () => new Response("ok"),
     "/alert/:chatId": { POST: handleAlertWebhook },
+    "/deploy/watch": { POST: handleDeployWatch },
     "/s/:threadKey/:token": { GET: handleSessionDump },
     "/handoff/:threadKey/:token": { GET: handleHandoffDump },
   },
@@ -91,7 +96,9 @@ if (cfg.session.dbPath) {
 
 startWS({ appId: larkAppId, appSecret: larkAppSecret, onMessage: handleLarkMessage });
 
-startTokenRefresh();
+await startTokenRefresh(models);
+
+startFeeds(cfg.feeds ?? [], makeFeedPostStore(cfg.session.dbPath, cfg.session.ttlSeconds));
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {

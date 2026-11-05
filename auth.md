@@ -1,8 +1,12 @@
 # Anthropic OAuth
 
-The opsremedy pod refreshes its own OAuth token. A `Bun.cron` tick every 5 minutes checks the expiry, refreshes when less than 15 minutes of life is left, and patches the rotated pair back into the token Secret. The Secret is `anthropic-auth` in namespace `opsremedy` by default, and the `SECRET_NAME` and `NAMESPACE` env vars override it. All three keys of that Secret are mounted as files under `/var/run/opsremedy`, so the pod picks up an external patch within about 60 seconds, with no rollout.
+The opsremedy pod refreshes its own OAuth token. `src/utils/anthropic_token.ts:SecretCredentialStore` is the pi-ai `CredentialStore` for `models`. When a model request finds less than 5 minutes of life left, pi-ai refreshes the token inside the store lock, so concurrent requests refresh once. The store patches the rotated pair back into the token Secret. The Secret is `anthropic-auth` in namespace `opsremedy` by default, and the `SECRET_NAME` and `NAMESPACE` env vars override it.
 
-A refresh waits for the pod to go idle, so a rotation never lands between two model calls of one investigation. Under 5 minutes of remaining life it stops waiting, because an alert storm can hold the pod busy for an hour and an expired token fails every call in that storm.
+All three keys of that Secret are mounted as files under `/var/run/opsremedy`. The pod reads the files until its first refresh. After that, it keeps the rotated pair in memory, and it reads the files again only after a refresh fails with `invalid_grant`. The kubelet syncs a patched Secret into the files within about 60 seconds, with no rollout.
+
+A `Bun.cron` tick every 5 minutes calls `models.getAuth("anthropic")`, so an idle pod also refreshes before expiry. A refresh does not wait for in-flight work. A rotation can land between two model calls of one investigation, and the next call uses the new token.
+
+A stored credential owns the provider, so `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_OAUTH_TOKEN` in the environment are ignored while the Secret holds a refresh token.
 
 Use a dedicated bot account. Never use a personal account, share its login, or reuse its refresh token locally. Refresh tokens are one-time use, so a second refresh anywhere invalidates the value the pod holds.
 
@@ -24,7 +28,7 @@ KUBE_CONTEXT=<context> NAMESPACE=<namespace> scripts/seed-refresh-token.sh
 
 The script asks for a login method. If the browser runs on the same machine, pick browser login. If it does not, pick copy code login and paste the code that Anthropic shows. In both cases, log into the dedicated bot account in a private browser window when the URL is printed. The script pipes the JSON output of `anthropic-login.ts` straight into `kubectl patch`, so the tokens never reach a ticket, chat, or shell history.
 
-The running pod adopts the reseeded credential on its own. It drops the credential it holds as soon as its own refresh returns `invalid_grant`, then reads the mounted Secret again on the next tick. If you need the switch immediately, restart the Deployment:
+The running pod adopts the reseeded credential on its own. It drops the credential it holds as soon as its own refresh returns `invalid_grant`, then reads the mounted Secret again on the next request or tick. If you need the switch immediately, restart the Deployment:
 
 ```bash
 kubectl -n <namespace> rollout restart deployment/opsremedy
