@@ -64,7 +64,7 @@ The code is in `lark/handler.ts`, `triage.ts` and `harness/reply.ts`. The handof
 | ---------------------------------------------------------------------------------------------- | ---------------------- |
 | `gcp_logging_query`                                                                            | `gcp_logging.ts`       |
 | `prom_*`, `promql_instant`, `promql_range`, `promql_movers`                                    | `prom.ts`, `movers.ts` |
-| `jaeger_get_trace` (lookup by trace id only)                                                   | `jaeger.ts`            |
+| `jaeger_get_trace` (lookup by trace id, Jaeger HTTP API v3)                                    | `jaeger.ts`            |
 | `kafka_list_groups`, `kafka_describe_group`, `kafka_list_topics`, `kafka_describe_topic`       | `kafka.ts`             |
 | `k8s_get_pods`, `k8s_pod_logs`, `k8s_get_events`, `k8s_get_deployments`, `k8s_rollout_history` | `kubernetes.ts`        |
 | `k8s_get_nodes`, `k8s_list_images`                                                             | `kubernetes.ts`        |
@@ -75,7 +75,7 @@ The code is in `lark/handler.ts`, `triage.ts` and `harness/reply.ts`. The handof
 1. Install the tools with `mise install`, the dependencies with `bun install`, and the gitleaks commit hook with `prek install`.
 2. Copy `.env.example` to `.env` and fill in the Lark app, the webhook token and the session secret.
 3. Replace every example value in `config.yaml`. `systemContext` describes your request path and namespaces to the agent.
-4. Start the server with `bun run dev`.
+4. Start the server with `bun run dev`. `bun run build` compiles one executable to `dist/opsremedy`, and `docker build .` cross-compiles it into a distroless image for amd64 or arm64.
 5. Point a GCP Monitoring webhook channel at `https://<publicBaseUrl>/alert/<lark-chat-id>?token=<OPSREMEDY_WEBHOOK_TOKEN>`.
 
 ## Optional inputs

@@ -20,7 +20,7 @@ function isAuthError(err: string): boolean {
 
 const AUTH_MESSAGE =
   "The agent's Anthropic credential was rejected, so no model call can run. " +
-  "Reseed it with `scripts/seed-refresh-token.sh`, then ask again. Runbook: auth.md.";
+  "Reseed it with `scripts/seed-refresh-token.ts`, then ask again. Runbook: auth.md.";
 
 const SECRET_RE = /\b(?:sk-ant-[A-Za-z0-9_-]{6,}|sk-[A-Za-z0-9_-]{20,})/g;
 const MAX_ERROR_CHARS = 400;
@@ -35,7 +35,7 @@ export function userFacingError(err: string | undefined): string {
 
 export function noteModelError(err: string | undefined, fields: Record<string, unknown> = {}): boolean {
   if (!err || !isAuthError(err)) return false;
-  anthropicCredentials.expire();
+  void anthropicCredentials.expire();
   log.error("anthropic credential rejected; reseed required (auth.md)", undefined, {
     ...fields,
     detail: err.slice(0, 200).replace(SECRET_RE, "[redacted]"),

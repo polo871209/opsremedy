@@ -23,10 +23,10 @@ Use a dedicated bot account. Never use a personal account, share its login, or r
 Run this on your laptop, in a real terminal, because the login prompts need a TTY:
 
 ```bash
-KUBE_CONTEXT=<context> NAMESPACE=<namespace> scripts/seed-refresh-token.sh
+KUBE_CONTEXT=<context> NAMESPACE=<namespace> scripts/seed-refresh-token.ts
 ```
 
-The script asks for a login method. If the browser runs on the same machine, pick browser login. If it does not, pick copy code login and paste the code that Anthropic shows. In both cases, log into the dedicated bot account in a private browser window when the URL is printed. The script pipes the JSON output of `anthropic-login.ts` straight into `kubectl patch`, so the tokens never reach a ticket, chat, or shell history.
+The script asks for a login method. If the browser runs on the same machine, pick browser login. If it does not, pick copy code login and paste the code that Anthropic shows. In both cases, log into the dedicated bot account in a private browser window when the URL is printed. The script runs the login in-process and pipes the patch into `kubectl patch` through stdin, so the tokens never reach a process argument, a ticket, chat, or shell history.
 
 The running pod adopts the reseeded credential on its own. It drops the credential it holds as soon as its own refresh returns `invalid_grant`, then reads the mounted Secret again on the next request or tick. If you need the switch immediately, restart the Deployment:
 
@@ -75,7 +75,7 @@ Reseed when the pod logs `TypeSafe rejected the triage key` or `TypeSafe client 
 - `src/utils/anthropic_token.ts`: credential store read by every model call.
 - `src/utils/model-error.ts`: maps a rejected credential to the reseed instruction the thread shows.
 - `src/utils/refresh-token.ts`: out-of-band CLI refresh.
-- `src/utils/anthropic-login.ts`: local OAuth helper, run by `scripts/seed-refresh-token.sh`.
+- `scripts/seed-refresh-token.ts`: Bun Shell script for the local OAuth login and the Secret patch.
 - `src/utils/typesafe.ts`: TypeSafe client for triage and grounding, built once from `TYPESAFE_API_KEY`.
 
 ## Troubleshoot
@@ -85,6 +85,6 @@ Reseed when the pod logs `TypeSafe rejected the triage key` or `TypeSafe client 
 | `429 rate_limit_error`      | Stop sharing the credential, then reseed with the dedicated account.                       |
 | `invalid_grant` (400)       | The refresh token was rotated elsewhere. Reseed.                                           |
 | `token secret patch failed` | Give the pod's service account `patch` on the token Secret. A restart then needs a reseed. |
-| `EADDRINUSE :53692`         | Stop the local listener, then retry the login helper.                                      |
-| `State mismatch`            | Use only the URL printed by the current login-helper run in a fresh tab.                   |
+| `EADDRINUSE :53692`         | Stop the local listener, then retry the seed script.                                      |
+| `State mismatch`            | Use only the URL printed by the current seed-script run in a fresh tab.                   |
 | Pod uses an old token       | Check the Secret volume mount and `utils/anthropic_token.ts`. Never expose token contents. |

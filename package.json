@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --compile --minify --sourcemap --outfile dist/opsremedy",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -16,13 +17,10 @@
     "@earendil-works/pi-durable": "^1.5.0",
     "@earendil-works/pi-schema": "^1.5.0",
     "@google-cloud/logging": "^12.3.0",
-    "@grpc/grpc-js": "^1.14.7",
-    "@grpc/proto-loader": "^0.8.1",
     "@kubernetes/client-node": "^2.0.2",
     "@larksuiteoapi/node-sdk": "1.76.0",
     "jose": "^6.2.15",
-    "kafkajs": "^2.2.4",
-    "yaml": "^2.9.1"
+    "kafkajs": "^2.2.4"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",

@@ -1,85 +1,19 @@
-import { resolve } from "node:path";
 import { bool, obj, opt, str } from "@earendil-works/pi-schema";
 import { sreTool, type SreTool } from "./types.ts";
 import { textResult, guarded } from "./result.ts";
-import * as grpc from "@grpc/grpc-js";
-import * as protoLoader from "@grpc/proto-loader";
 import { compactTrace } from "./trace-compact.ts";
 
-const PROTO_ROOT = resolve(import.meta.dir, "../../protos");
-
-interface GetTraceRequest {
-  traceId: string;
-  startTime?: ReturnType<typeof isoToTimestamp>;
-  endTime?: ReturnType<typeof isoToTimestamp>;
-}
-
-// FindTraces, GetServices and GetOperations scan the whole index for the window and overload the Jaeger query service.
-type GrpcClient = grpc.Client & {
-  GetTrace(req: GetTraceRequest, opts: grpc.CallOptions): NodeJS.ReadableStream;
-};
-let _client: GrpcClient | undefined;
-let _clientAddr: string | undefined;
-
-function getClient(addr: string): GrpcClient {
-  if (_client && _clientAddr === addr) return _client;
-  const def = protoLoader.loadSync("jaeger/api_v3/query_service.proto", {
-    keepCase: false,
-    longs: String,
-    enums: String,
-    defaults: true,
-    oneofs: true,
-    includeDirs: [PROTO_ROOT],
-  });
-  const pkg = grpc.loadPackageDefinition(def) as any;
-  const Svc = pkg.jaeger.api_v3.QueryService as grpc.ServiceClientConstructor;
-  _client = new Svc(addr, grpc.credentials.createInsecure(), {
-    "grpc.max_receive_message_length": 64 * 1024 * 1024,
-  }) as unknown as GrpcClient;
-  _clientAddr = addr;
-  return _client;
-}
-
-function deadline(): grpc.CallOptions {
-  return { deadline: Date.now() + 30_000 };
-}
-
-interface TracesData {
-  resourceSpans?: unknown[];
-}
-function getTrace(client: GrpcClient, req: GetTraceRequest): Promise<TracesData> {
-  return new Promise((res, rej) => {
-    const stream = client.GetTrace(req, deadline());
-    const merged: unknown[] = [];
-    stream.on("data", (chunk: TracesData) => {
-      if (chunk.resourceSpans) merged.push(...chunk.resourceSpans);
-    });
-    stream.on("error", rej);
-    stream.on("end", () => res({ resourceSpans: merged }));
-  });
-}
-
-interface OtelSpan {
-  traceId?: string | Buffer;
-  spanId?: string | Buffer;
-  parentSpanId?: string | Buffer;
-}
-interface OtelResourceSpans {
-  scopeSpans?: { spans?: OtelSpan[] }[];
-}
-
-function toHex(v: unknown): string {
-  if (!v) return "";
-  if (typeof v === "string") return v;
-  if (v instanceof Uint8Array) return Buffer.from(v).toString("hex");
-  return String(v);
-}
-
-function isoToTimestamp(iso?: string) {
-  if (!iso) return undefined;
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) return undefined;
-  return { seconds: Math.floor(ms / 1000), nanos: (ms % 1000) * 1_000_000 };
+// FindTraces scans the whole index for the window and overloads the Jaeger query service, so only GetTrace is exposed.
+// HTTP API: https://www.jaegertracing.io/docs/latest/architecture/apis/#query-json-over-http
+async function getTrace(baseUrl: string, traceId: string, startISO: string, endISO: string): Promise<unknown[]> {
+  const url = new URL(`/api/v3/traces/${traceId}`, baseUrl);
+  url.searchParams.set("startTime", startISO);
+  url.searchParams.set("endTime", endISO);
+  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  if (res.status === 404) return [];
+  if (!res.ok) throw new Error(`jaeger GetTrace: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+  const body = (await res.json()) as { result?: { resourceSpans?: unknown[] } };
+  return body.result?.resourceSpans ?? [];
 }
 
 const TRACE_ID_RE = /^[0-9a-f]{16}(?:[0-9a-f]{16})?$/;
@@ -91,7 +25,7 @@ function normalizeTraceId(raw: string): string | undefined {
   return TRACE_ID_RE.test(id) ? id : undefined;
 }
 
-function getTraceTool(addr: string): SreTool {
+function getTraceTool(baseUrl: string): SreTool {
   return sreTool({
     name: "jaeger_get_trace",
     cheap: false,
@@ -123,26 +57,13 @@ function getTraceTool(addr: string): SreTool {
           true,
         );
       }
-      const r = await getTrace(getClient(addr), {
-        traceId,
-        startTime: isoToTimestamp(tw.startISO()),
-        endTime: isoToTimestamp(tw.endISO()),
-      });
-      for (const rs of (r.resourceSpans ?? []) as OtelResourceSpans[]) {
-        for (const ss of rs.scopeSpans ?? []) {
-          for (const s of ss.spans ?? []) {
-            if (s.traceId) (s as any).traceId = toHex(s.traceId);
-            if (s.spanId) (s as any).spanId = toHex(s.spanId);
-            if (s.parentSpanId) (s as any).parentSpanId = toHex(s.parentSpanId);
-          }
-        }
-      }
-      if (a.raw) return textResult(r);
-      return textResult({ trace_id: traceId, ...compactTrace((r.resourceSpans ?? []) as unknown[]) });
+      const resourceSpans = await getTrace(baseUrl, traceId, tw.startISO(), tw.endISO());
+      if (a.raw) return textResult({ resourceSpans });
+      return textResult({ trace_id: traceId, ...compactTrace(resourceSpans) });
     }),
   });
 }
 
-export function jaegerTools(addr: string): SreTool[] {
-  return [getTraceTool(addr)];
+export function jaegerTools(baseUrl: string): SreTool[] {
+  return [getTraceTool(baseUrl)];
 }

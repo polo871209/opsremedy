@@ -1,6 +1,4 @@
-import { readFileSync } from "node:fs";
 import { arr, compile, int, map, obj, oneOf, opt, str, type Static } from "@earendil-works/pi-schema";
-import { parse } from "yaml";
 
 const ConfigSchema = obj({
   model: obj({
@@ -22,7 +20,7 @@ const ConfigSchema = obj({
   gcp: obj({ project: str() }),
   kubernetes: obj({ namespace: str() }),
   prometheus: obj({ url: str(), datasourceUid: str() }),
-  jaeger: obj({ addr: str() }),
+  jaeger: obj({ url: str() }),
   kafka: opt(obj({ brokers: arr(str()) })),
   grafana: obj({ url: str() }),
   session: obj({ dbPath: str(), ttlSeconds: int({ minimum: 1 }), linkTtlSeconds: int({ minimum: 1 }) }),
@@ -52,8 +50,8 @@ function interp(v: unknown): unknown {
   return v;
 }
 
-export function loadConfig(path: string): Config {
-  const raw = interp(parse(readFileSync(path, "utf8")));
+export async function loadConfig(path: string): Promise<Config> {
+  const raw = interp(Bun.YAML.parse(await Bun.file(path).text()));
   if (config.check(raw)) return raw;
   const problems = config.errors(raw).map((e) => `${e.path || "/"}: ${e.message}`);
   throw new Error(`${path} is invalid: ${problems.join("; ")}`);

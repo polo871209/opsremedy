@@ -40,10 +40,8 @@ src/
             the progress-card status line (status.ts), and the two submit_diagnosis grounding checks
             (evidence.ts token overlap, grounding.ts System One)
   utils/    timewindow, cap, retry, semaphore, inflight, logger, typesafe, progress, model-error,
-            anthropic_* and token-refresh (in-process OAuth rotation), plus the one-shot CLIs refresh-token
-            and anthropic-login
-scripts/      seed-refresh-token.sh mints an OAuth token and patches the token Secret (auth.md)
-protos/       Jaeger gRPC protos
+            anthropic_* and token-refresh (in-process OAuth rotation), plus the one-shot CLI refresh-token
+scripts/      seed-refresh-token.ts mints an OAuth token and patches the token Secret (auth.md)
 config.yaml   runtime configuration, `${VAR}` interpolated against process.env (config.ts:interp).
               systemContext is the deployment topology the investigate prompt reads.
 seed-calls.yaml  alert name → tool calls run before the first turn, local-dev override OPSREMEDY_SEED_CALLS
@@ -81,7 +79,8 @@ Tool descriptions are not held to this yet: rewrite the one you touch, and leave
 ## Conventions
 
 - `utils/` (not `util/`).
-- Server logs go through `utils/logger.ts` only: GCP structured JSON, stdout INFO/WARNING, stderr ERROR. The one-shot CLI entrypoints `utils/refresh-token.ts` and `utils/anthropic-login.ts` may use `console.*`.
+- Reach for the Bun API first: `Bun.file`, `Bun.YAML`, `Bun.CryptoHasher`, `bun:sqlite`, `Bun.$`, `Bun.sleep`, `Bun.cron`, `Bun.serve` routes and `fetch`. Import `node:*` only for an API that Bun lacks, such as `node:path`. `harness/bun-sqlite.ts` is pi-durable's storage on `bun:sqlite`.
+- Server logs go through `utils/logger.ts` only: GCP structured JSON, stdout INFO/WARNING, stderr ERROR. The one-shot CLIs `utils/refresh-token.ts` and `scripts/*.ts` may use `console.*`.
 - Comments explain a non-obvious constraint or failure mode, never syntax or history. Keep doc URLs in code comments, not in tool descriptions or prompts.
 - Card timestamps use `config.yaml:timezone` with an explicit offset (`gcp/card.ts:formatCardTime`). `lark/handler.ts:parseCardTime` reads that format back.
 - `OPSREMEDY_WEBHOOK_TOKEN` is non-confidential: query-string auth via `?token=`.

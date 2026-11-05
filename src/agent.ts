@@ -13,7 +13,7 @@ import {
   untrusted,
   VERDICT_SYSTEM_PROMPT,
 } from "./prompt.ts";
-import { buildSeedContext, loadSeedCalls, resolveSeedCalls } from "./source/seed.ts";
+import { buildSeedContext, resolveSeedCalls, seedCalls } from "./source/seed.ts";
 import { resolveTools } from "./tools/registry.ts";
 import { log } from "./utils/logger.ts";
 import { makeTimeWindow } from "./utils/timewindow.ts";
@@ -77,7 +77,7 @@ async function seedCallsBlock(alert: Alert, cfg: Config): Promise<string> {
   const window = { start: tw.startISO(), end: tw.endISO() };
   const seeds = [
     ...(alert.seedCalls ?? []),
-    ...resolveSeedCalls(alert, loadSeedCalls(), buildSeedContext(alert, window, cfg.kubernetes.namespace)),
+    ...resolveSeedCalls(alert, seedCalls(), buildSeedContext(alert, window, cfg.kubernetes.namespace)),
   ];
   if (!seeds.length) return "";
   const tools = resolveTools(cfg);

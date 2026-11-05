@@ -8,11 +8,11 @@ import {
   MemoryStorage,
 } from "@earendil-works/pi-durable";
 import { SqliteStorage, type SqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite";
-import { openNodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { Config } from "../config.ts";
 import { models } from "../model.ts";
 import { resolveTools } from "../tools/registry.ts";
 import { log } from "../utils/logger.ts";
+import { openBunSqliteDatabase } from "./bun-sqlite.ts";
 import { ctx, harness, setHarness } from "./current.ts";
 import { DeployWatchTask } from "../deploy/watch.ts";
 import { ThreatAssessmentTask } from "../feed/assess.ts";
@@ -28,7 +28,7 @@ function harnessFilePath(dbPath: string): string {
 let database: SqliteDatabase | undefined;
 
 export async function openHarness(cfg: Config): Promise<Harness> {
-  database = cfg.session.dbPath ? await openNodeSqliteDatabase(harnessFilePath(cfg.session.dbPath)) : undefined;
+  database = cfg.session.dbPath ? openBunSqliteDatabase(harnessFilePath(cfg.session.dbPath)) : undefined;
   const storage = database ? await SqliteStorage.open(database) : new MemoryStorage();
   const tools = resolveTools(cfg);
   const cheap = new Set(tools.filter((t) => t.cheap).map((t) => t.name));

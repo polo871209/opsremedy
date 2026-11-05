@@ -1,4 +1,3 @@
-import { statSync, readFileSync } from "node:fs";
 import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
 import { log } from "./logger.ts";
 
@@ -16,33 +15,33 @@ type OAuthCredential = Extract<Credential, { type: "oauth" }>;
 
 const fileCache = new Map<string, { value: string; mtimeMs: number; checkedAt: number }>();
 
-function readField(key: string): string | undefined {
+async function readField(key: string): Promise<string | undefined> {
+  const file = Bun.file(`${DIR}/${key}`);
   try {
-    const st = statSync(`${DIR}/${key}`);
     const now = Date.now();
     const hit = fileCache.get(key);
-    if (hit && hit.mtimeMs === st.mtimeMs && now - hit.checkedAt < CACHE_TTL_MS) return hit.value;
-    const value = readFileSync(`${DIR}/${key}`, "utf8").trim();
+    if (hit && hit.mtimeMs === file.lastModified && now - hit.checkedAt < CACHE_TTL_MS) return hit.value;
+    const value = (await file.text()).trim();
     if (!value) return undefined;
-    fileCache.set(key, { value, mtimeMs: st.mtimeMs, checkedAt: now });
+    fileCache.set(key, { value, mtimeMs: file.lastModified, checkedAt: now });
     return value;
   } catch {
     return undefined;
   }
 }
 
-function field(key: string): string | undefined {
-  return readField(key) ?? process.env[key] ?? undefined;
+async function field(key: string): Promise<string | undefined> {
+  return (await readField(key)) ?? process.env[key] ?? undefined;
 }
 
-function mountedCredential(): OAuthCredential | undefined {
-  const refresh = field("ANTHROPIC_REFRESH_TOKEN");
+async function mountedCredential(): Promise<OAuthCredential | undefined> {
+  const refresh = await field("ANTHROPIC_REFRESH_TOKEN");
   if (!refresh) return undefined;
   return {
     type: "oauth",
-    access: field("ANTHROPIC_OAUTH_TOKEN") ?? "",
+    access: (await field("ANTHROPIC_OAUTH_TOKEN")) ?? "",
     refresh,
-    expires: Number(field("ANTHROPIC_TOKEN_EXPIRES_AT") ?? 0) || 0,
+    expires: Number((await field("ANTHROPIC_TOKEN_EXPIRES_AT")) ?? 0) || 0,
   };
 }
 
@@ -63,8 +62,8 @@ export class SecretCredentialStore implements CredentialStore {
 
   constructor(private readonly patchSecret: (creds: Creds) => Promise<void>) {}
 
-  private current(): OAuthCredential | undefined {
-    return this.live ?? mountedCredential();
+  private async current(): Promise<OAuthCredential | undefined> {
+    return this.live ?? (await mountedCredential());
   }
 
   async read(providerId: string): Promise<Credential | undefined> {
@@ -72,7 +71,7 @@ export class SecretCredentialStore implements CredentialStore {
   }
 
   async list() {
-    return this.current() ? [{ providerId: PROVIDER_ID, type: "oauth" as const }] : [];
+    return (await this.current()) ? [{ providerId: PROVIDER_ID, type: "oauth" as const }] : [];
   }
 
   async delete(providerId: string): Promise<void> {
@@ -85,7 +84,7 @@ export class SecretCredentialStore implements CredentialStore {
   ): Promise<Credential | undefined> {
     if (providerId !== PROVIDER_ID) return Promise.resolve(undefined);
     const run = this.tail.then(async () => {
-      const before = this.current();
+      const before = await this.current();
       let next: Credential | undefined;
       try {
         next = await fn(before);
@@ -113,9 +112,13 @@ export class SecretCredentialStore implements CredentialStore {
     return run;
   }
 
-  expire(): void {
-    const cur = this.current();
-    if (cur) this.live = { ...cur, expires: 0 };
+  expire(): Promise<void> {
+    const run = this.tail.then(async () => {
+      const cur = await this.current();
+      if (cur) this.live = { ...cur, expires: 0 };
+    });
+    this.tail = run;
+    return run;
   }
 
   private clear(): void {

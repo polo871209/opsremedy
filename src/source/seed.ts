@@ -1,6 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
 import { arr, compile, map, obj, str, unknown, type Static } from "@earendil-works/pi-schema";
-import { parse } from "yaml";
 import type { Alert } from "../alert.ts";
 import { log } from "../utils/logger.ts";
 
@@ -13,29 +11,32 @@ export type SeedCallsConfig = SeedCallRule[];
 
 const seedCallRule = compile(SeedCallRuleSchema);
 
-let _cfg: SeedCallsConfig | undefined;
-export function loadSeedCalls(): SeedCallsConfig {
-  if (_cfg) return _cfg;
+let _cfg: SeedCallsConfig = [];
+
+export function seedCalls(): SeedCallsConfig {
+  return _cfg;
+}
+
+export async function loadSeedCalls(): Promise<void> {
   const path = process.env.OPSREMEDY_SEED_CALLS ?? "seed-calls.yaml";
-  if (!existsSync(path)) {
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
     log.info("seed calls config absent; feature off", { path });
-    _cfg = [];
-    return _cfg;
+    return;
   }
   try {
-    const parsed: unknown = parse(readFileSync(path, "utf8")) ?? [];
+    const parsed: unknown = Bun.YAML.parse(await file.text()) ?? [];
     if (!Array.isArray(parsed)) throw new Error("top level must be a list of rules");
-    _cfg = [];
+    const rules: SeedCallsConfig = [];
     for (const [i, rule] of parsed.entries()) {
-      if (seedCallRule.check(rule)) _cfg.push(rule);
+      if (seedCallRule.check(rule)) rules.push(rule);
       else log.warn("seed call rule dropped: malformed", { path, rule: i, errors: seedCallRule.errors(rule) });
     }
-    log.info("seed calls loaded", { path, rules: _cfg.length });
+    _cfg = rules;
+    log.info("seed calls loaded", { path, rules: rules.length });
   } catch (e) {
     log.warn("seed calls config invalid; feature off", { path, error: String(e) });
-    _cfg = [];
   }
-  return _cfg;
 }
 
 export interface SeedContext {

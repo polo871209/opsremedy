@@ -77,7 +77,7 @@ export function resolveTools(cfg: Config): SreTool[] {
     tools.push(...promTools(cfg.prometheus.url, cfg.grafana.url, cfg.prometheus.datasourceUid));
     tools.push(moversTool(cfg.prometheus.url));
   }
-  if (cfg.jaeger?.addr) tools.push(...jaegerTools(cfg.jaeger.addr));
+  if (cfg.jaeger?.url) tools.push(...jaegerTools(cfg.jaeger.url));
   if (cfg.kafka?.brokers?.length) tools.push(...kafkaTools(cfg.kafka.brokers));
   tools.push(...kubernetesTools(cfg.kubernetes.namespace));
   return tools.map((t) => withMaxOutput(t.retry ? withRetry(t) : t));

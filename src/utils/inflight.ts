@@ -15,6 +15,6 @@ export function inflightCount(): number {
 
 export async function drain(timeoutMs: number): Promise<{ done: boolean; remaining: number }> {
   if (inflight.size === 0) return { done: true, remaining: 0 };
-  await Promise.race([Promise.allSettled([...inflight]), new Promise((res) => setTimeout(res, timeoutMs))]);
+  await Promise.race([Promise.allSettled([...inflight]), Bun.sleep(timeoutMs)]);
   return { done: inflight.size === 0, remaining: inflight.size };
 }

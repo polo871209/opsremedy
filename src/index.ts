@@ -22,8 +22,10 @@ import { drain, DRAIN_TIMEOUT_MS } from "./utils/inflight.ts";
 import { models } from "./model.ts";
 import { startTokenRefresh } from "./utils/token-refresh.ts";
 import { startFeeds } from "./feed/watch.ts";
+import { loadSeedCalls } from "./source/seed.ts";
 
-const cfg = loadConfig("config.yaml");
+const cfg = await loadConfig("config.yaml");
+await loadSeedCalls();
 const port = Number(process.env.PORT ?? 8080);
 const larkAppId = process.env.LARK_BOT_APP_ID ?? "";
 const larkAppSecret = process.env.LARK_BOT_APP_SECRET ?? "";

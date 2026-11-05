@@ -35,7 +35,7 @@ export function withRetry(tool: SreTool): SreTool {
         }
         if (i + 1 < ATTEMPTS) {
           log.info("tool retry", { tool: tool.name, attempt: i + 1 });
-          await new Promise((res) => setTimeout(res, 500));
+          await Bun.sleep(500);
         }
       }
       if (last) return last;

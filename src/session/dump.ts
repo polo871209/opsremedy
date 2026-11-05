@@ -11,7 +11,7 @@ export async function resolveSessionLink(
   const threadKey = req.params.threadKey;
   const token = req.params.token;
   if (!threadKey || !token) return Response.json({ error: "missing threadKey or token" }, { status: 400 });
-  if (!verifySessionToken(threadKey, token)) {
+  if (!(await verifySessionToken(threadKey, token))) {
     return Response.json(
       { error: "invalid or expired link; post 'handoff' in the Lark thread to get a fresh one" },
       { status: 410 },
